@@ -1,0 +1,7 @@
+aiogram
+python-dotenv
+asyncio
+logging
+datetime
+json
+random
