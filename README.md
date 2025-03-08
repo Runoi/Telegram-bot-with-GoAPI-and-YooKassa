@@ -25,9 +25,9 @@
    BOT_TOKEN=your_telegram_bot_token
    ADMIN_CHANNEL_ID=-100XXXXXXXXXX
    TEST_PROVIDER_TOKEN=your_provider_token
-   PRICE_START=35000  # Цена в копейках
-   PRICE_MASTER=75000
-   PRICE_YEAR=350000
+   PRICE_START=350  # Цена в рублях
+   PRICE_MASTER=750
+   PRICE_YEAR=3500
    ```
 4. Запустите бота:
    ```sh
