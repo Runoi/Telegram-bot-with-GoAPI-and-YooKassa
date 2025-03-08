@@ -8,8 +8,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import StateFilter
 import os
+from datetime import datetime
 import datetime
-import json
+import time
 import asyncio
 import logging
 import random
@@ -17,9 +18,10 @@ from dotenv import load_dotenv
 from function import is_user_subscribed, generate_referral_code, generate_referral_link
 import db 
 import aimu
-from db import add_referal,get_referal,get_ref_url,get_balance,deduct_tokens,check_status,ban,unban, check_all,check_ref,give_tokens,get_subsc,chec_subsc, add_auto, un_auto
+from db import add_referal,get_referal,get_ref_url,get_balance,deduct_tokens,check_status,ban,unban, check_all,check_ref,give_tokens,get_subsc,check_subsc, add_auto, un_auto,check_and_issue_tokens,renew_subscription
 from aiogram.enums.parse_mode import ParseMode
 from payments import create_payment,get_payment
+
 
 
 
@@ -32,9 +34,11 @@ ADMIN_CHANNEL_ID = -1002337007587
 img_face = FSInputFile('face_image.jpg')
 exemple_music = FSInputFile('exemple.mp3',filename='Пример песни')
 
+
 bot = Bot(token=bot_token)
 storage = MemoryStorage()
 dp = Dispatcher()
+
 
 # Определение состояний
 class MusicGeneration(StatesGroup):
@@ -350,24 +354,6 @@ async def activate(callback_query: types.CallbackQuery, state: FSMContext):
     # Убираем "часики" на кнопке
     await callback_query.answer()
 
-# #@dp.message(Command('music'))
-# @dp.callback_query(lambda query: query.data == "gen_mus")
-# async def func_sozd(callback_query: types.CallbackQuery, state: FSMContext):
-#         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-#         [InlineKeyboardButton(text="Создать песню", callback_data="generate_music"),InlineKeyboardButton(text="Получить токены", callback_data="my_refs")],
-#         [InlineKeyboardButton(text="Другие нейросети", url='https://t.me/hassanmaxim/84'),InlineKeyboardButton(text="Инструкция и поддержка", web_app=WebAppInfo(url='https://teletype.in/@infopovod/avrora'))],
-       
-#     ])                   
-#      # Отправляем второе сообщение с профилем пользователя
-#         await callback_query.message.answer(
-#                         f'👤 Мой профиль\n\n'
-#                         f'🆔 Telegram ID: {callback_query.from_user.id}\n'
-#                         f'🎬 Баланс: {round(await get_balance(callback_query.from_user.id))} token🧾\n'
-#                         f'⭐️ Пригласил: {len(await get_referal(callback_query.from_user.id))}',
-#                         reply_markup=keyboard
-#                     )
-
-#@dp.message(Command('music'))
 @dp.callback_query(lambda query: query.data == "generate_music")
 async def generate_music(callback_query: types.CallbackQuery, state: FSMContext):
     status = await check_status(callback_query.from_user.id)
@@ -393,42 +379,56 @@ async def generate_music(callback_query: types.CallbackQuery, state: FSMContext)
     else:
         await callback_query.message.edit_text('Вы забанены!')
 
-# Обработчик callback-запроса (выбор режима)
-@dp.callback_query(lambda query: query.data == "simple" or query.data == "hard")
+@dp.callback_query(lambda query: query.data in ["simple", "hard"])
 async def process_genre(callback_query: types.CallbackQuery, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state is not None:
+        await state.clear()  # Сбрасываем состояние
+
     # Подтверждаем обработку callback-запроса
     await callback_query.answer()
-    keyboard1 = InlineKeyboardMarkup(inline_keyboard=[
+
+    # Проверяем подписку заранее
+    subsc = await check_subsc(callback_query.from_user.id)
+
+    # Клавиатура "Назад"
+    back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
     ])
-    # Сохраняем выбранный режим в состояние
-    await state.update_data(mode=callback_query.data)
 
-    # Если выбран простой режим
+    # Обрабатываем "Простой режим"
     if callback_query.data == "simple":
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        genre_keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="Рок📀", callback_data="rock"),
              InlineKeyboardButton(text="Рэп💿", callback_data="rap")], 
             [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
         ])
-        # Создаем клавиатуру с кнопкой "Назад"
-        
+
+        await state.update_data(mode="simple")
         await state.set_state(MusicGeneration.waiting_for_lyrics)
         await callback_query.message.edit_text(
             '''✅Простой режим активирован. (1 токен = 2 песни).\n\n
 <b>Выберите один из двух доступных жанров.👇</b>''',
-            reply_markup=keyboard,parse_mode=ParseMode.HTML
+            reply_markup=genre_keyboard,
+            parse_mode=ParseMode.HTML
         )
-    # Если выбран сложный режим (hard), добавьте соответствующую логику
-    subsc = await chec_subsc(callback_query.from_user.id)
-    if subsc:
-        if callback_query.data == "hard":
-            await state.set_state(MusicGeneration.waiting_for_lyrics)  # Ожидание ввода жанра
-            await callback_query.message.edit_text('''✅Мастер режим активирован. (1 токен = 2 песни).\n\n
-    <b>👇Прямо в чат напишите 1 из 250 жанров (пример: рок, считалочка, русские частушки..)</b>''',parse_mode=ParseMode.HTML,reply_markup=keyboard1)
-    else:
-        
-        await callback_query.message.edit_text('У вас нет подписки для этого режима',reply_markup=keyboard1)
+
+    # Обрабатываем "Мастер режим"
+    elif callback_query.data == "hard":
+        if subsc:
+            await state.update_data(mode="hard")
+            await state.set_state(MusicGeneration.waiting_for_lyrics)
+            await callback_query.message.edit_text(
+                '''✅Мастер режим активирован. (1 токен = 2 песни).\n\n
+<b>👇Прямо в чат напишите 1 из 250 жанров (пример: рок, считалочка, русские частушки..)</b>''',
+                parse_mode=ParseMode.HTML,
+                reply_markup=back_keyboard
+            )
+        else:
+            await callback_query.message.edit_text(
+                '❌ У вас нет подписки для этого режима',
+                reply_markup=back_keyboard
+            )
 
 
 @dp.message(MusicGeneration.waiting_for_lyrics)
@@ -631,28 +631,6 @@ async def handle_music_generation(callback_query: types.CallbackQuery, state: FS
         #await callback_query.message.answer(f"Произошла ошибка")
         await bot.send_message(ADMIN_CHANNEL_ID,f"Произошла ошибка: {e}\n У пользователя @{callback_query.from_user.username}")
     
-
-# @dp.callback_query(lambda query: query.data == "my_refs")
-# async def show_refs(callback_query: types.CallbackQuery):
-#     try:
-#         # Создаем inline-клавиатуру
-#         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-#             [InlineKeyboardButton(text="Купить подписку", callback_data="get_sub"),InlineKeyboardButton(text="Бесплатные токены", callback_data="free")],
-#             [InlineKeyboardButton(text="🔙 Назад", callback_data="activate")]
-#         ])
-
-#         # Текст сообщения с описанием тарифов
-#         mess = "Как вы хотите получить токены?"
-            
-        
-
-#         # Редактируем сообщение с новым текстом и клавиатурой
-#         await callback_query.message.edit_text(mess, reply_markup=keyboard)
-#     except Exception as e:
-#         # Обработка ошибок (например, если сообщение уже было изменено)
-#         print(f"Ошибка при редактировании сообщения: {e}")
-#         await callback_query.answer("Произошла ошибка. Пожалуйста, попробуйте еще раз.")
-
 @dp.message(Command('pay'))
 async def pay(message:types.Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -661,14 +639,14 @@ async def pay(message:types.Message):
         ],
         [InlineKeyboardButton(text="🌕Годовая", callback_data="sub_year"),
          InlineKeyboardButton(text="Бесплатные токены", callback_data="free")],
-        [InlineKeyboardButton(text="Отменить продление", callback_data="otmena")],
+        [InlineKeyboardButton(text="Отменить продление", url="https://t.me/dropsupport")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="activate")]
     ])
     mess = (
             f'''Создавайте легко свои песни и публикуйте их на всех площадках, зарабатывая за прослушивания!\n
 <b>ТАРИФЫ:</b>\n
-🌘 Старт - 20 токенов (40 песен)\n
-🌗 Мастер - 60 токенов (120 песен)\n
+🌘 Старт - 20 токенов (40 песен) в месяц\n
+🌗 Мастер - 60 токенов (120 песен) в месяц\n
 🌕 Годовой - всё из тарифа «Мастер» на целый год с выгодой 50%.\n
 
 ✅Оплачивайте через официальные платежные с-мы безопасно. Нам доверяю: Paypal, Sber, Yandex money, СБП, Vk pay и другие.\n
@@ -688,14 +666,14 @@ async def get_sub(callback_query: types.CallbackQuery):
         ],
         [InlineKeyboardButton(text="🌕Годовая", callback_data="sub_year"),
          InlineKeyboardButton(text="Бесплатные токены", callback_data="free")],
-        [InlineKeyboardButton(text="Отменить продление", callback_data="otmena")],
+        [InlineKeyboardButton(text="Отменить продление", url="https://t.me/dropsupport")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="activate")]
     ])
     mess = (
             f'''Создавайте легко свои песни и публикуйте их на всех площадках, зарабатывая за прослушивания!\n
 <b>ТАРИФЫ:</b>\n
-🌘 Старт - 20 токенов (40 песен)\n
-🌗 Мастер - 60 токенов (120 песен)\n
+🌘 Старт - 20 токенов (40 песен) в месяц\n
+🌗 Мастер - 60 токенов (120 песен) в месяц\n
 🌕 Годовой - всё из тарифа «Мастер» на целый год с выгодой 50%.\n
 
 ✅Оплачивайте через официальные платежные с-мы безопасно. Нам доверяю: Paypal, Sber, Yandex money, СБП, Vk pay и другие.\n
@@ -707,246 +685,71 @@ async def get_sub(callback_query: types.CallbackQuery):
     await callback_query.message.edit_text(mess, reply_markup=keyboard,parse_mode=ParseMode.HTML)
 
 
-@dp.callback_query(lambda query: query.data == "otmena")
-async def otmena(callback_query: types.CallbackQuery,state:FSMContext):
-        current_state = await state.get_state()
-        if current_state is not None:
-            await state.clear()  # чтобы свободно перейти сюда из любого другого состояния
-        
-        await un_auto(callback_query.from_user.id)
-
-@dp.callback_query(lambda query: query.data == "sub_start")
-async def sub_start(callback_query: types.CallbackQuery,state:FSMContext):
+async def process_subscription(callback_query: types.CallbackQuery, state: FSMContext, sub_type: str, price_env: str, tokens: int):
     try:
         user_id = callback_query.from_user.id
         current_state = await state.get_state()
         if current_state is not None:
-            await state.clear()  # чтобы свободно перейти сюда из любого другого состояния
-        # Загрузка переменных окружения
+            await state.clear()
+        
         prov_token = os.getenv('TEST_PROVIDER_TOKEN')
-        sub_price = os.getenv('PRICE_START')
+        sub_price = os.getenv(price_env)
         
         if not prov_token or not sub_price:
             raise ValueError("Не удалось загрузить переменные окружения")
         
-        try:
-            await state.set_state(MusicGeneration.buying)
-            # Создаём платёж
-            url, payment_id = await create_payment(int(sub_price) // 100)
-            if not url or not payment_id:
-                await callback_query.message.edit_text("Не удалось создать платёж. Попробуйте ещё раз.")
-                return
-
-            now = datetime.date.today()
-
-            # Создаём клавиатуру с кнопкой для оплаты
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=f"Оплатить {int(sub_price) // 100} руб.", web_app=WebAppInfo(url=url))]
-            ])
-
-            # Обновляем сообщение с клавиатурой
-            await callback_query.message.edit_text(
-                f'Купить подписку за {int(sub_price) // 100} рублей',
-                reply_markup=keyboard
-            )
-            await callback_query.answer('', cache_time=60)
-            dat = str(now+datetime.timedelta(days=30)).split(' ')[0]
-            # Ожидаем завершения платежа (опрос статуса)
-            for _ in range(10):  # Проверяем статус 10 раз с интервалом 5 секунд
-                await callback_query.answer('', cache_time=60)
-                await asyncio.sleep(5)  # Задержка между проверками
-                payment = await get_payment(payment_id)
-
-                if payment is False:
-                    continue  # Платёж ещё не завершён
-                
-                if payment or payment[0] == 'succeeded':  # Платёж успешен
-                    
-                    if len(payment) > 1 and len(payment) != 9:  # Если есть дополнительная информация
-                        # Например, сохраняем ID метода оплаты
-                        payment_method_id = payment[1]
-                        await add_auto(user_id, payment_method_id)
-                        
-                
-                        await get_subsc(dat,user_id)
-                        await give_tokens(user_id,20)
-
-                        #await callback_query.answer(f"Платёж совершён, подписка будет продлеваться автоматически",show_alert= True)
-
-                        await bot.send_message(ADMIN_CHANNEL_ID,f'Пользователь {user_id} оплатил подписку с автопродлением ')
-                        if current_state is not None:
-                            await state.clear()  # чтобы свободно перейти сюда из любого другого состояния
-                        await activate(callback_query,state)
-                        
-                        break
-                        
-                    else:
-                        await get_subsc(dat,user_id)
-                        await give_tokens(user_id,20)
-
-                        #await callback_query.answer(f"Платёж совершён",show_alert= True)
-
-                        await bot.send_message(ADMIN_CHANNEL_ID,f'Пользователь {user_id} оплатил подписку без автопродления')
-
-                        if current_state is not None:
-                            await state.clear()  # чтобы свободно перейти сюда из любого другого состояния
-
-                        await activate(callback_query,state)
-                        
-                        break
-                
-            else:
-                await callback_query.message.answer("Платёж не был завершён. Попробуйте ещё раз.")
-
-        except Exception as e:
-            # Логируем ошибку и уведомляем пользователя
-            print(f"Произошла ошибка: {e}")
-            #await callback_query.message.answer("Произошла ошибка. Попробуйте ещё раз.")
+        await state.set_state(MusicGeneration.buying)
+        url, payment_id = await create_payment(sub_price)
+        if not url or not payment_id:
+            await callback_query.message.edit_text("Не удалось создать платёж. Попробуйте ещё раз.")
+            return
         
-        # # Формируем provider_data как строку JSON
-        # provider_data = {
-        #     "receipt": {
-        #         "items": [
-        #             {
-        #                 "description": "Подписка",
-        #                 "quantity": "1.00",
-        #                 "amount": {
-        #                     "value": f"{int(sub_price) / 100}",  # Сумма в рублях
-        #                     "currency": "RUB"
-        #                 },
-        #                 "vat_code": 1
-        #             }
-        #         ]
-        #     }
-        # }
-        # provider_data_json = json.dumps(provider_data)
-        # await state.set_state(MusicGeneration.buying)
-        # # Отправка счета
-        # await bot.send_invoice(
-        #     chat_id=callback_query.message.chat.id,
-        #     title="🌘 Старт",
-        #     description='Оплата подписки Старт',
-        #     payload='bot_paid',
-        #     provider_token=prov_token,
-        #     currency="RUB",
-        #     prices=[LabeledPrice(label='Оплата заказа', amount=sub_price)],
-        #     need_phone_number=True,
-        #     send_phone_number_to_provider=True,
-        #     provider_data= provider_data_json
-        # )
+        now = datetime.date.today()
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"Оплатить {sub_price} руб.", web_app=WebAppInfo(url=url))],
+            [InlineKeyboardButton(text=f"⬅ Назад", callback_data='my_refs')]
+        ])
+        
+        await callback_query.message.edit_text(f'Купить подписку за {sub_price} рублей', reply_markup=keyboard)
+        await callback_query.answer('', cache_time=60)
+        expiry_date = (now + datetime.timedelta(days=30)).strftime('%Y-%m-%d')
+        
+        for _ in range(10):
+            await asyncio.sleep(5)
+            payment = await get_payment(payment_id)
+            
+            if payment is False:
+                continue
+            #print(type(payment))
+            if payment or payment[0] == 'succeeded':
+                
+                if isinstance(payment, tuple):
+                    await add_auto(user_id, payment[1])
+                
+                await get_subsc(expiry_date, sub_type, user_id)
+                await give_tokens(user_id, tokens)
+                await bot.send_message(ADMIN_CHANNEL_ID, f'Пользователь {user_id} оплатил подписку{sub_type} {"с автопродлением" if isinstance(payment, tuple) else "без автопродления"}')
+                await state.clear()
+                await activate(callback_query, state)
+                break
+        else:
+            await callback_query.message.answer("Платёж не был завершён. Попробуйте ещё раз.")
     except Exception as e:
-        #logger.error(f"Ошибка при отправке счета: {e}")
-        print(e)
-        await callback_query.answer("Произошла ошибка при отправке счета. Пожалуйста, попробуйте позже.")
-        current_state = await state.get_state()
-        if current_state is not None:
-            await state.clear()
+        print(f"Ошибка: {e}")
+        await callback_query.answer("Произошла ошибка. Попробуйте позже.")
+        await state.clear()
+
+@dp.callback_query(lambda query: query.data == "sub_start")
+async def sub_start(callback_query: types.CallbackQuery, state: FSMContext):
+    await process_subscription(callback_query, state, "start", 'PRICE_START', 20)
 
 @dp.callback_query(lambda query: query.data == "sub_master")
-async def sub_master(callback_query: types.CallbackQuery,state:FSMContext):
-    try:
-        current_state = await state.get_state()
-        if current_state is not None:
-            await state.clear()  # чтобы свободно перейти сюда из любого другого состояния
-        # Загрузка переменных окружения
-        prov_token = os.getenv('TEST_PROVIDER_TOKEN')
-        sub_price = os.getenv('PRICE_MASTER')
-        
-        if not prov_token or not sub_price:
-            raise ValueError("Не удалось загрузить переменные окружения")
-        
-        
-        # Формируем provider_data как строку JSON
-        provider_data = {
-            "receipt": {
-                "items": [
-                    {
-                        "description": "Подписка",
-                        "quantity": "1.00",
-                        "amount": {
-                            "value": f"{int(sub_price) / 100}",  # Сумма в рублях
-                            "currency": "RUB"
-                        },
-                        "vat_code": 1
-                    }
-                ]
-            }
-        }
-        provider_data_json = json.dumps(provider_data)
-        await state.set_state(MusicGeneration.buying)
-        # Отправка счета
-        await bot.send_invoice(
-            chat_id=callback_query.message.chat.id,
-            title="🌗 Мастер",
-            description='Мастер',
-            payload='bot_paid',
-            provider_token=prov_token,
-            currency="RUB",
-            prices=[LabeledPrice(label='Оплата заказа', amount=sub_price)],
-            need_phone_number=True,
-            send_phone_number_to_provider=True,
-            provider_data= provider_data_json
-        )
-    except Exception as e:
-        #logger.error(f"Ошибка при отправке счета: {e}")
-        print(e)
-        await callback_query.answer("Произошла ошибка при отправке счета. Пожалуйста, попробуйте позже.")
-        current_state = await state.get_state()
-        if current_state is not None:
-            await state.clear()            
+async def sub_master(callback_query: types.CallbackQuery, state: FSMContext):
+    await process_subscription(callback_query, state, "master", 'PRICE_MASTER', 60)
 
 @dp.callback_query(lambda query: query.data == "sub_year")
-async def sub_year(callback_query: types.CallbackQuery,state:FSMContext):
-    try:
-        current_state = await state.get_state()
-        if current_state is not None:
-            await state.clear()  # чтобы свободно перейти сюда из любого другого состояния
-        # Загрузка переменных окружения
-        prov_token = os.getenv('TEST_PROVIDER_TOKEN')
-        sub_price = os.getenv('PRICE_YEAR')
-        
-        if not prov_token or not sub_price:
-            raise ValueError("Не удалось загрузить переменные окружения")
-        
-        
-        # Формируем provider_data как строку JSON
-        provider_data = {
-            "receipt": {
-                "items": [
-                    {
-                        "description": "Подписка",
-                        "quantity": "1.00",
-                        "amount": {
-                            "value": f"{int(sub_price) / 100}",  # Сумма в рублях
-                            "currency": "RUB"
-                        },
-                        "vat_code": 1
-                    }
-                ]
-            }
-        }
-        provider_data_json = json.dumps(provider_data)
-        await state.set_state(MusicGeneration.buying)
-        # Отправка счета
-        await bot.send_invoice(
-            chat_id=callback_query.message.chat.id,
-            title="🌕 Годовая",
-            description='Годовая',
-            payload='bot_paid',
-            provider_token=prov_token,
-            currency="RUB",
-            prices=[LabeledPrice(label='Оплата заказа', amount=sub_price)],
-            need_phone_number=True,
-            send_phone_number_to_provider=True,
-            provider_data= provider_data_json
-        )
-    except Exception as e:
-        #logger.error(f"Ошибка при отправке счета: {e}")
-        print(e)
-        await callback_query.answer("Произошла ошибка при отправке счета. Пожалуйста, попробуйте позже.")
-        current_state = await state.get_state()
-        if current_state is not None:
-            await state.clear()
+async def sub_year(callback_query: types.CallbackQuery, state: FSMContext):
+    await process_subscription(callback_query, state, "year", 'PRICE_YEAR', 60)
 
 @dp.callback_query(lambda query: query.data == 'free')
 async def get_free(callback_query: types.CallbackQuery):
@@ -989,62 +792,6 @@ async def support(callback_query: types.CallbackQuery):
         [InlineKeyboardButton(text="🔙 Назад", callback_data="activate")]
     ])
     await callback_query.message.edit_text("Поддержка - https://teletype.in/@infopovod/avrora", reply_markup=keyboard)
-
-@dp.pre_checkout_query()
-async def process_pre_checkout_query(pre_checkout_query: types.PreCheckoutQuery):
-    try:
-        print(1)
-        await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)  # всегда отвечаем утвердительно
-    except Exception as e:
-        logging.error(f"Ошибка при обработке апдейта типа PreCheckoutQuery: {e}")
-
-@dp.message(F.successful_payment)
-async def process_successful_payment(message: types.Message, state: FSMContext):
-        user_id = message.from_user.id
-        print(user_id)
-        
-        await bot.send_message(
-        ADMIN_CHANNEL_ID,
-        f"Пользователь {message.from_user.id} успешно оплатил подписку на сумму {message.successful_payment.total_amount // 100} {message.successful_payment.currency}. ID транзакции - {message.successful_payment.provider_payment_charge_id}"
-        )
-        now = datetime.date.today()
-        await message.reply(f"Платеж на сумму {message.successful_payment.total_amount // 100} "
-                            f"{message.successful_payment.currency} прошел успешно!")
-        try:
-            #logging.info(f"Получен платеж от {message.from_user.id}")
-            if (message.successful_payment.total_amount) == 35000:
-                dat = str(now+datetime.timedelta(days=30)).split(' ')[0]
-                
-                await get_subsc(dat,message.from_user.id)
-                
-                await give_tokens(message.from_user.id,20)
-                # Логируем успешное завершение
-                logger.info(f"Платеж успешно обработан для пользователя {user_id}.")
-            elif message.successful_payment.total_amount == 75000:
-                dat = str(now+datetime.timedelta(days=60)).split(' ')[0]
-                await get_subsc(dat,message.from_user.id)
-                await give_tokens(message.from_user.id,60)
-                # Логируем успешное завершение
-                logger.info(f"Платеж успешно обработан для пользователя {user_id}.")
-            elif message.successful_payment.total_amount == 350000:
-                dat = str(now+datetime.timedelta(days=360)).split(' ')[0]
-                await get_subsc(dat,message.from_user.id)
-                await give_tokens(message.from_user.id,60)
-                # Логируем успешное завершение
-                logger.info(f"Платеж успешно обработан для пользователя {user_id}.")
-            current_state = await state.get_state()
-            if current_state is not None:
-                await state.clear()  # чтобы свободно перейти сюда из любого другого состояния
-            await any_message_handler(message,state)
-        except Exception as e:
-            logger.error(f"Ошибка при обработке платежа для пользователя {user_id}: {e}")
-
-@dp.message(StateFilter(MusicGeneration.buying))
-async def process_unsuccessful_payment(message: types.Message, state: FSMContext):
-        await message.reply("Не удалось выполнить платеж!")
-        current_state = await state.get_state()
-        if current_state is not None:
-            await state.clear()  # чтобы свободно перейти сюда из любого другого состояния
 
 @dp.message()
 async def any_message_handler(message: types.Message, state: FSMContext):
@@ -1100,11 +847,32 @@ async def any_message_handler(message: types.Message, state: FSMContext):
                 # Отправляем сообщение с изображением и клавиатурой
                 await message.answer_photo(img_face, caption=face_message, reply_markup=sub_keyboard)   
 
-    
+async def daily_check():
+    while True:
+
+        logging.info("Запуск ежедневной проверки подписок...")
+        await check_and_issue_tokens()
+        logging.info("Ежедневная проверка завершена.")
+        
+        # Ждем до следующего дня
+        await asyncio.sleep(86400)  # 86400 секунд = 1 день
+
+async def renw_check():
+    while True:
+
+        logging.info("Запуск ежедневной проверки подписок...")
+        await renew_subscription()
+        logging.info("Ежедневная проверка завершена.")
+        
+        # Ждем до следующего дня
+        await asyncio.sleep(86401)  # 86400 секунд = 1 день
+
 async def main():
 
     await db.create_table()
     await set_commands(bot)
+    asyncio.create_task(daily_check())
+    asyncio.create_task(renw_check())
     await dp.start_polling(bot)
 
 # Запуск бота

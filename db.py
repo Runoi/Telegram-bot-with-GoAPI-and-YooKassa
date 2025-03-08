@@ -3,6 +3,15 @@
 import asyncio
 import aiosqlite
 import datetime
+from datetime import datetime,timedelta
+import logging
+from dotenv import load_dotenv
+import os
+from payments import create_auto_payment
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 DB_NAME = 'music_bot.db'
 
@@ -18,6 +27,7 @@ async def create_table():
     balance REAL DEFAULT 0,
     status INTEGER,
     sub TEXT,
+    plan TEXT,
     auto INTEGER DEFAULT 0,
     payment_id TEXT                
 );''')
@@ -244,16 +254,20 @@ async def check_ref(ref):
             print(f"Ошибка при проверке статуса: {e}")
             return False  # В случае ошибки возвращаем False
         
-async def get_subsc(date: str, user_id: int) -> bool:
+async def get_subsc(date: str,plan:str ,user_id: int) -> bool:
     """
-    Обновляет дату подписки для пользователя.
-    Возвращает True в случае успеха, иначе False.
+    Обновляет дату подписки и план для пользователя.
+
+    :param date: Новая дата подписки.
+    :param plan: Новый план подписки.
+    :param user_id: Идентификатор пользователя.
+    :return: True, если обновление прошло успешно, иначе False.
     """
     try:
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute(
-                'UPDATE users SET sub = ? WHERE user_id = ?',
-                (date, user_id)
+                'UPDATE users SET sub = ?, plan = ? WHERE user_id = ?',
+                (date,plan, user_id)
             )
             await db.commit()
             
@@ -263,12 +277,122 @@ async def get_subsc(date: str, user_id: int) -> bool:
         
         return False
 
-async def chec_subsc(id):
+async def check_subsc(id):
     async with aiosqlite.connect(DB_NAME) as db:
-      async with  db.execute('SELECT sub FROM users WHERE user_id = ?', (id,)) as cursor:
+        cursor = await db.execute('SELECT sub FROM users WHERE user_id = ?', (id,))
         user_data = await cursor.fetchone()
-        if user_data[0] is not None:
-            end_date = datetime.datetime.strptime(user_data[0], '%Y-%m-%d')
-            return datetime.datetime.today() <= end_date
+        
+        if user_data and user_data[0]:  # Проверка на None
+            try:
+                end_date = datetime.strptime(user_data[0], '%Y-%m-%d').date()  # Преобразование строки в дату
+                return datetime.today().date() <= end_date  # Сравниваем даты
+            except ValueError:
+                return False  # Если дата в БД повреждена, вернуть False
+        
         return False
     
+
+async def check_and_issue_tokens():
+    """
+    Проверяет подписку пользователей и начисляет токены в зависимости от плана.
+    """
+    try:
+        async with aiosqlite.connect(DB_NAME) as db:
+            # Получаем текущую дату
+            today = datetime.now().date()
+
+            # Выбираем пользователей с активной подпиской
+            cursor = await db.execute(
+                'SELECT user_id, plan FROM users WHERE sub >= ?',
+                (today,)
+            )
+            users = await cursor.fetchall()
+
+            # Начисляем токены в зависимости от плана
+            for user_id, plan in users:
+                tokens = 0
+                if plan == "start":
+                    tokens = 20
+                elif plan == "master":
+                    tokens = 60
+                elif plan == "year":
+                    # Проверяем, что текущий день месяца совпадает с днем начала подписки
+                    # (например, если подписка началась 15 числа, то начисляем 15 числа каждого месяца)
+                    user_cursor = await db.execute(
+                        'SELECT sub FROM users WHERE user_id = ?',
+                        (user_id,)
+                    )
+                    sub_date = (await user_cursor.fetchone())[0]
+                    if sub_date:  # Проверяем, что sub_date не None
+                        sub_date = datetime.strptime(sub_date, "%Y-%m-%d").date()
+                        if today.day == sub_date.day:
+                            tokens = 60
+
+                if tokens > 0:
+                    # Начисляем токены
+                    await give_tokens(user_id, tokens)
+                    #logging.info(f"Начислено {tokens} токенов пользователю {user_id}.")
+
+    except Exception as e:
+        #logging.error(f"Ошибка при проверке и начислении токенов: {e}")
+        print(e)
+
+async def renew_subscription():
+    """
+    Автоматически продлевает подписку для пользователей с включенным автопродлением.
+    """
+    try:
+        load_dotenv('keys.env')
+        price_s = int(os.getenv('PRICE_START'))//100
+        price_m = int(os.getenv('PRICE_MASTER'))//100
+        price_y = int(os.getenv('PRICE_YEAR'))//100
+        async with aiosqlite.connect(DB_NAME) as db:
+            # Получаем текущую дату
+            today = datetime.now().date()
+
+            # Выбираем пользователей с истекающей подпиской и включенным автопродлением
+            cursor = await db.execute(
+                'SELECT user_id, payment_id, plan FROM users WHERE sub <= ? AND auto = 1',
+                (today,)
+            )
+            users = await cursor.fetchall()
+
+            # Для каждого пользователя создаем новый платеж и обновляем подписку
+            for user_id, payment_id, plan in users:
+                # Определяем стоимость подписки в зависимости от плана
+                price = 0
+                if plan == "start":
+                    price = price_s # Пример стоимости
+                elif plan == "master":
+                    price = price_m  # Пример стоимости
+                elif plan == "year":
+                    price = price_y  # Пример стоимости
+
+                if price > 0:
+                    # Создаем новый платеж с использованием сохраненного payment_id
+                    confirmation_url, new_payment_id = await create_auto_payment(price, payment_id)
+                    asyncio.sleep(10)
+                    if confirmation_url and new_payment_id:
+                        if plan != 'year':
+                            # Обновляем дату подписки 
+                            new_sub_date = (datetime.now() + timedelta(days=30)).date()
+                            await db.execute(
+                                'UPDATE users SET sub = ?, payment_id = ? WHERE user_id = ?',
+                                (new_sub_date, new_payment_id, user_id)
+                            )
+                            await db.commit()
+                            logger.info(f"Подписка пользователя {user_id} успешно продлена до {new_sub_date}.")
+                        else:
+                            # Обновляем дату подписки 
+                            new_sub_date = (datetime.now() + timedelta(days=360)).date()
+                            await db.execute(
+                                'UPDATE users SET sub = ?, payment_id = ? WHERE user_id = ?',
+                                (new_sub_date, new_payment_id, user_id)
+                            )
+                            await db.commit()
+                            logger.info(f"Подписка пользователя {user_id} успешно продлена до {new_sub_date}.")
+                    else:
+                        logger.error(f"Не удалось создать платеж для пользователя {user_id}.")
+
+    except Exception as e:
+        logger.error(f"Ошибка при продлении подписки: {e}", exc_info=True)
