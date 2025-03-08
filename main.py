@@ -858,7 +858,7 @@ async def any_message_handler(message: types.Message, state: FSMContext):
 async def daily_check():
     while True:
 
-        logging.info("Запуск ежедневной проверки подписок...")
+        logging.info("Запуск ежедневной проверки подписок для токенов...")
         await check_and_issue_tokens()
         logging.info("Ежедневная проверка завершена.")
         
@@ -868,7 +868,7 @@ async def daily_check():
 async def renw_check():
     while True:
 
-        logging.info("Запуск ежедневной проверки подписок...")
+        logging.info("Запуск ежедневной проверки подписок для продления...")
         await renew_subscription()
         logging.info("Ежедневная проверка завершена.")
         

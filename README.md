@@ -13,7 +13,7 @@
 ## Установка
 1. Склонируйте репозиторий:
    ```sh
-   git clone https://github.com/your-repo/avrorabot.git
+   git clone https://github.com/Runoi/Telegram-bot-with-GoAPI-and-YooKassa
    cd avrorabot
    ```
 2. Установите зависимости:
