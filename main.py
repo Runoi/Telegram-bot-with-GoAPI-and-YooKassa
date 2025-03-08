@@ -25,7 +25,15 @@ from payments import create_payment,get_payment
 
 
 
-logging.basicConfig(level=logging.INFO)
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,  # Уровень логирования (INFO, DEBUG, WARNING, ERROR, CRITICAL)
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Формат логов
+    handlers=[
+        logging.FileHandler('logs/bot.log'),  # Логи записываются в файл bot.log
+        logging.StreamHandler()  # Логи также выводятся в консоль (опционально)
+    ]
+)
 logger = logging.getLogger(__name__)
 
 load_dotenv('keys.env')
@@ -728,7 +736,7 @@ async def process_subscription(callback_query: types.CallbackQuery, state: FSMCo
                 
                 await get_subsc(expiry_date, sub_type, user_id)
                 await give_tokens(user_id, tokens)
-                await bot.send_message(ADMIN_CHANNEL_ID, f'Пользователь {user_id} оплатил подписку{sub_type} {"с автопродлением" if isinstance(payment, tuple) else "без автопродления"}')
+                await bot.send_message(ADMIN_CHANNEL_ID, f'Пользователь {user_id} оплатил подписку {sub_type} {"с автопродлением" if isinstance(payment, tuple) else "без автопродления"}')
                 await state.clear()
                 await activate(callback_query, state)
                 break

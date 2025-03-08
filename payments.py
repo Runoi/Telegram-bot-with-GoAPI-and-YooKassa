@@ -5,8 +5,16 @@ import uuid
 import yookassa
 import logging
 
+
 # Настройка логирования
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,  # Уровень логирования (INFO, DEBUG, WARNING, ERROR, CRITICAL)
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Формат логов
+    handlers=[
+        logging.FileHandler('logs/bot.log'),  # Логи записываются в файл bot.log
+        logging.StreamHandler()  # Логи также выводятся в консоль (опционально)
+    ]
+)
 logger = logging.getLogger(__name__)
 load_dotenv('keys.env')
 shop_id = os.getenv('SHOP_ID')
@@ -72,6 +80,8 @@ async def create_auto_payment(price: float, payment_method_id: str):
     try:
         # Генерация уникального ключа идемпотентности
         idempotence_key = str(uuid.uuid4())
+        yookassa.Configuration.account_id = shop_id
+        yookassa.Configuration.secret_key = secret_key
 
         # Создание платежа
         payment = yookassa.Payment.create({
@@ -102,7 +112,7 @@ async def create_auto_payment(price: float, payment_method_id: str):
         }, idempotence_key)
 
         # Получаем URL для подтверждения платежа
-        confirmation_url = payment.confirmation.confirmation_url
+        confirmation_url = payment.status
         payment_id = payment.id
 
         logger.info(f"Платеж создан. ID: {payment_id}, URL: {confirmation_url}")

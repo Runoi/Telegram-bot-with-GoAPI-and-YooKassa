@@ -10,7 +10,14 @@ import os
 from payments import create_auto_payment
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,  # Уровень логирования (INFO, DEBUG, WARNING, ERROR, CRITICAL)
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Формат логов
+    handlers=[
+        logging.FileHandler('logs/bot.log'),  # Логи записываются в файл bot.log
+        logging.StreamHandler()  # Логи также выводятся в консоль (опционально)
+    ]
+)
 logger = logging.getLogger(__name__)
 
 DB_NAME = 'music_bot.db'
@@ -297,6 +304,7 @@ async def check_and_issue_tokens():
     Проверяет подписку пользователей и начисляет токены в зависимости от плана.
     """
     try:
+        
         async with aiosqlite.connect(DB_NAME) as db:
             # Получаем текущую дату
             today = datetime.now().date()
@@ -307,9 +315,10 @@ async def check_and_issue_tokens():
                 (today,)
             )
             users = await cursor.fetchall()
-
+            print(users)
             # Начисляем токены в зависимости от плана
             for user_id, plan in users:
+                
                 tokens = 0
                 if plan == "start":
                     tokens = 20
@@ -343,9 +352,9 @@ async def renew_subscription():
     """
     try:
         load_dotenv('keys.env')
-        price_s = int(os.getenv('PRICE_START'))//100
-        price_m = int(os.getenv('PRICE_MASTER'))//100
-        price_y = int(os.getenv('PRICE_YEAR'))//100
+        price_s = int(os.getenv('PRICE_START'))
+        price_m = int(os.getenv('PRICE_MASTER'))
+        price_y = int(os.getenv('PRICE_YEAR'))
         async with aiosqlite.connect(DB_NAME) as db:
             # Получаем текущую дату
             today = datetime.now().date()
@@ -367,7 +376,7 @@ async def renew_subscription():
                     price = price_m  # Пример стоимости
                 elif plan == "year":
                     price = price_y  # Пример стоимости
-
+                
                 if price > 0:
                     # Создаем новый платеж с использованием сохраненного payment_id
                     confirmation_url, new_payment_id = await create_auto_payment(price, payment_id)
