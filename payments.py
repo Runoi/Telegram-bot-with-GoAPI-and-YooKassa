@@ -13,7 +13,7 @@ shop_id = os.getenv('SHOP_ID')
 secret_key = os.getenv('SECRET_KEY')
 
 async def create_payment(price):
-    
+    inn = int(os.getenv('INN'))
     try:
       idempotence_key = str(uuid.uuid4())
       yookassa.Configuration.account_id = shop_id
@@ -33,7 +33,7 @@ async def create_payment(price):
       },
       "receipt": {
                   "customer":{
-                      "inn":583509348538,
+                      "inn":inn,
                       "email":'catkonfis@gmail.com'
                   },
                   "items": [
