@@ -8,7 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import StateFilter
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import datetime
 import time
 import asyncio
@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from function import is_user_subscribed, generate_referral_code, generate_referral_link
 import db 
 import aimu
-from db import add_referal,get_referal,get_ref_url,get_balance,deduct_tokens,check_status,ban,unban, check_all,check_ref,give_tokens,get_subsc,check_subsc, add_auto, un_auto,check_and_issue_tokens,renew_subscription
+from db import add_referal,get_referal,get_ref_url,get_balance,deduct_tokens,check_status,ban,unban, check_all,check_ref,give_tokens,get_subsc,check_subsc, add_auto, un_auto,check_and_issue_tokens,renew_subscription,check_plan
 from aiogram.enums.parse_mode import ParseMode
 from payments import create_payment,get_payment
 
@@ -194,7 +194,7 @@ async def handle_admin_commands(message: types.Message):
 @dp.message(Command('start'))
 async def start(message: types.Message, state:FSMContext):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Создать песню", callback_data="generate_music"),InlineKeyboardButton(text="Получить токены", callback_data="my_refs")],
+        [InlineKeyboardButton(text="🎵Создать песню", callback_data="generate_music"),InlineKeyboardButton(text="💳Получить токены", callback_data="my_refs")],
         [InlineKeyboardButton(text="Другие нейросети", url='https://t.me/hassanmaxim/84'),InlineKeyboardButton(text="Инструкция и поддержка", web_app=WebAppInfo(url='https://teletype.in/@infopovod/avrora'))],
         
     ])
@@ -204,6 +204,21 @@ async def start(message: types.Message, state:FSMContext):
     if current_state is not None:
             await state.clear()  # чтобы свободно перейти сюда из любого другого состояния
     
+    plan = await check_plan(message.from_user.id)
+    plan_nadp = 'Нет подписки'
+    if plan:
+        
+        if plan[0] == 'start':
+            plan_nadp = 'Старт'
+        elif plan[0] == 'master':
+            print(plan[0])
+            plan_nadp = 'Мастер'
+        elif plan[0] == 'year':
+            plan_nadp = 'Годовая'
+        else:
+            plan_nadp = 'Нет подписки'
+    else:
+        plan_nadp = 'Нет подписки'
     # Проверяем, есть ли реферальная ссылка
     args = message.text.split()
     if len(args) > 1:
@@ -240,8 +255,10 @@ async def start(message: types.Message, state:FSMContext):
                 profile_message = (
                     f"👤 Мой профиль\n\n"
                     f"🆔 Telegram ID: <code>{message.from_user.id}</code>\n"
+                    f"🔓 Подписка: {plan_nadp}\n"
                     f"🎬 Баланс: {round(await get_balance(message.from_user.id))} token🧾\n"
                     f"⭐️ Пригласил: {len(await get_referal(message.from_user.id))}\n\n"
+                    
                     "Если нужна помощь - посмотрите справку или свяжитесь с администратором."
                 )
                 await message.answer(profile_message, reply_markup=keyboard,parse_mode=ParseMode.HTML)
@@ -269,7 +286,7 @@ async def start(message: types.Message, state:FSMContext):
 async def activate(callback_query: types.CallbackQuery, state: FSMContext):
     user = callback_query.from_user
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Создать песню", callback_data="generate_music"),InlineKeyboardButton(text="Получить токены", callback_data="my_refs")],
+        [InlineKeyboardButton(text="🎵Создать песню", callback_data="generate_music"),InlineKeyboardButton(text="💳Получить токены", callback_data="my_refs")],
         [InlineKeyboardButton(text="Другие нейросети", url='https://t.me/hassanmaxim/84'),InlineKeyboardButton(text="Инструкция и поддержка", web_app=WebAppInfo(url='https://teletype.in/@infopovod/avrora'))],
        
     ])
@@ -279,7 +296,21 @@ async def activate(callback_query: types.CallbackQuery, state: FSMContext):
     current_state = await state.get_state()
     if current_state is not None:
             await state.clear()  # чтобы свободно перейти сюда из любого другого состояния
-
+    plan = await check_plan(callback_query.from_user.id)
+    plan_nadp = 'Нет подписки'
+    if plan:
+        
+        if plan[0] == 'start':
+            plan_nadp = 'Старт'
+        elif plan[0] == 'master':
+            print(plan[0])
+            plan_nadp = 'Мастер'
+        elif plan[0] == 'year':
+            plan_nadp = 'Годовая'
+        else:
+            plan_nadp = 'Нет подписки'
+    else:
+        plan_nadp = 'Нет подписки'
     
     # Проверяем подписку
     is_sub = await is_user_subscribed(bot, user.id, '@hassanmaxim')
@@ -318,6 +349,7 @@ async def activate(callback_query: types.CallbackQuery, state: FSMContext):
                         f'▶️ Ваш баланс: {round(balance)} токена\n'
                         f'🧾 А это значит = генерация {round(balance) * 2} песен.\n'
                         'Я могу создать уникальную песню по вашему запросу, с вашим текстом и в любом жанре.\n'
+                        
                         'Теперь больше не нужно платить тысячи и обращаться к специалистам. В 2 клика создавай инструментал, вокал и многое другое! В высоком качестве и по лучшей цене.\n\n'
                         '<b>Вот коротенький пример моей песни👇</b>',
                         reply_markup=keyboard1
@@ -337,8 +369,10 @@ async def activate(callback_query: types.CallbackQuery, state: FSMContext):
                     await callback_query.message.edit_text(
                         f'👤 Мой профиль\n\n'
                         f'🆔 Telegram ID: <code>{callback_query.from_user.id}</code>\n'
+                        f"🔓 Подписка: {plan_nadp}\n"
                         f'🎬 Баланс: {await get_balance(callback_query.from_user.id)} token🧾\n'
                         f'⭐️ Пригласил: {len(await get_referal(callback_query.from_user.id))}\n\n'
+                        
                         'Если нужна помощь - посмотрите справку или свяжитесь с администратором.',
                         reply_markup=keyboard, parse_mode= ParseMode.HTML
                     )
@@ -401,6 +435,7 @@ async def process_genre(callback_query: types.CallbackQuery, state: FSMContext):
 
     # Клавиатура "Назад"
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❤️Поддержать", callback_data="my_refs"),InlineKeyboardButton(text="Бесплатные токены", callback_data="free")],
         [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
     ])
 
@@ -434,7 +469,7 @@ async def process_genre(callback_query: types.CallbackQuery, state: FSMContext):
             )
         else:
             await callback_query.message.edit_text(
-                '❌ У вас нет подписки для этого режима',
+                '⭐️Режим мастер -  доступен с подпиской. Поддержите проект, либо получите бесплатные токены, которые мы выдаем всем хорошим людям.',
                 reply_markup=back_keyboard
             )
 
@@ -627,12 +662,12 @@ async def handle_music_generation(callback_query: types.CallbackQuery, state: FS
                     await callback_query.message.answer('💜 Сейчас у нас очень много запросов.  Произошла ошибка, повторите ваш запрос позже, либо активируйте подписку для приоритетной очереди.')
                     
                     await bot.send_message(ADMIN_CHANNEL_ID, f"🚨 Общая ошибка генерации музыки: API вернул ошибку")
-                    activate(callback_query)
+                    activate(callback_query,state)
                     break
             # Обновляем баланс
             # balance = await get_balance(callback_query.from_user.id)
             # await callback_query.message.answer(f'Ваш баланс - {balance}. Желаете вернуться на главную или сгенерировать ещё раз?', reply_markup=keyboard)
-            await activate(callback_query)
+            await activate(callback_query,state)
 
 
     except Exception as e:
@@ -640,7 +675,10 @@ async def handle_music_generation(callback_query: types.CallbackQuery, state: FS
         await bot.send_message(ADMIN_CHANNEL_ID,f"Произошла ошибка: {e}\n У пользователя @{callback_query.from_user.username}")
     
 @dp.message(Command('pay'))
-async def pay(message:types.Message):
+async def pay(message:types.Message,state: FSMContext):
+    current_state = await state.get_state()
+    if current_state is not None:
+            await state.clear()
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🌘Старт", callback_data="sub_start"),
          InlineKeyboardButton(text="🌗Мастер", callback_data="sub_master"),
@@ -653,9 +691,9 @@ async def pay(message:types.Message):
     mess = (
             f'''Создавайте легко свои песни и публикуйте их на всех площадках, зарабатывая за прослушивания!\n
 <b>ТАРИФЫ:</b>\n
-🌘 Старт - 20 токенов (40 песен) в месяц\n
-🌗 Мастер - 60 токенов (120 песен) в месяц\n
-🌕 Годовой - всё из тарифа «Мастер» на целый год с выгодой 50%.\n
+🌘 Старт - 20 токенов (40 песен) в месяц - 350₽ /мес\n
+🌗 Мастер - 60 токенов (120 песен) в месяц - 700₽ /мес\n
+🌕 Годовой - всё из тарифа «Мастер» на целый год с выгодой 50%. - 5400₽ /мес\n
 
 ✅Оплачивайте через официальные платежные с-мы безопасно. Нам доверяю: Paypal, Sber, Yandex money, СБП, Vk pay и другие.\n
 
@@ -680,9 +718,9 @@ async def get_sub(callback_query: types.CallbackQuery):
     mess = (
             f'''Создавайте легко свои песни и публикуйте их на всех площадках, зарабатывая за прослушивания!\n
 <b>ТАРИФЫ:</b>\n
-🌘 Старт - 20 токенов (40 песен) в месяц\n
-🌗 Мастер - 60 токенов (120 песен) в месяц\n
-🌕 Годовой - всё из тарифа «Мастер» на целый год с выгодой 50%.\n
+🌘 Старт - 20 токенов (40 песен) в месяц - 350₽ /мес\n
+🌗 Мастер - 60 токенов (120 песен) в месяц - 700₽ /мес\n
+🌕 Годовой - всё из тарифа «Мастер» на целый год с выгодой 50%. - 5400₽ /мес\n
 
 ✅Оплачивайте через официальные платежные с-мы безопасно. Нам доверяю: Paypal, Sber, Yandex money, СБП, Vk pay и другие.\n
 
@@ -699,30 +737,36 @@ async def process_subscription(callback_query: types.CallbackQuery, state: FSMCo
         current_state = await state.get_state()
         if current_state is not None:
             await state.clear()
+        from datetime import datetime,timedelta
+        import pytz
+        # Получаем текущее время в UTC
+        now_datetime = datetime.now(pytz.utc)
         
-        prov_token = os.getenv('TEST_PROVIDER_TOKEN')
+        # Устанавливаем срок действия платежа на 15 минут вперед
+        td = now_datetime + timedelta(minutes=15)
+        
+        # Преобразуем в формат ISO 8601 с миллисекундами
+        expires_at = td.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
         sub_price = os.getenv(price_env)
         
-        if not prov_token or not sub_price:
-            raise ValueError("Не удалось загрузить переменные окружения")
         
         await state.set_state(MusicGeneration.buying)
-        url, payment_id = await create_payment(sub_price)
+        url, payment_id = await create_payment(sub_price,expires_at)
         if not url or not payment_id:
             await callback_query.message.edit_text("Не удалось создать платёж. Попробуйте ещё раз.")
             return
         
-        now = datetime.date.today()
+        now = datetime.now()
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=f"Оплатить {sub_price} руб.", web_app=WebAppInfo(url=url))],
             [InlineKeyboardButton(text=f"⬅ Назад", callback_data='my_refs')]
         ])
         
-        await callback_query.message.edit_text(f'Купить подписку за {sub_price} рублей', reply_markup=keyboard)
+        await callback_query.message.edit_text(f'✅Оплачивайте через официальные платежные с-мы безопасно. Нам доверяю: Paypal, Sber, Yandex money, СБП, Vk pay и другие.\n', reply_markup=keyboard)
         await callback_query.answer('', cache_time=60)
         expiry_date = (now + datetime.timedelta(days=30)).strftime('%Y-%m-%d')
         
-        for _ in range(10):
+        for _ in range():
             await asyncio.sleep(5)
             payment = await get_payment(payment_id)
             
@@ -741,7 +785,7 @@ async def process_subscription(callback_query: types.CallbackQuery, state: FSMCo
                 await activate(callback_query, state)
                 break
         else:
-            await callback_query.message.answer("Платёж не был завершён. Попробуйте ещё раз.")
+            await bot.send_message(ADMIN_CHANNEL_ID,f"{callback_query.from_user.id} (@{callback_query.from_user.username}) отменил оплату")
     except Exception as e:
         print(f"Ошибка: {e}")
         await callback_query.answer("Произошла ошибка. Попробуйте позже.")
@@ -804,14 +848,28 @@ async def support(callback_query: types.CallbackQuery):
 @dp.message()
 async def any_message_handler(message: types.Message, state: FSMContext):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Создать песню", callback_data="generate_music"),InlineKeyboardButton(text="Получить токены", callback_data="my_refs")],
+        [InlineKeyboardButton(text="🎵Создать песню", callback_data="generate_music"),InlineKeyboardButton(text="💳Получить токены", callback_data="my_refs")],
         [InlineKeyboardButton(text="Другие нейросети", url='https://t.me/hassanmaxim/84'),InlineKeyboardButton(text="Инструкция и поддержка", web_app=WebAppInfo(url='https://teletype.in/@infopovod/avrora'))],
         
     ])
 
     # Проверяем текущее состояние пользователя
     current_state = await state.get_state()
-
+    plan = await check_plan(message.from_user.id)
+    plan_nadp = 'Нет подписки'
+    if plan:
+        
+        if plan[0] == 'start':
+            plan_nadp = 'Старт'
+        elif plan[0] == 'master':
+            print(plan[0])
+            plan_nadp = 'Мастер'
+        elif plan[0] == 'year':
+            plan_nadp = 'Годовая'
+        else:
+            plan_nadp = 'Нет подписки'
+    else:
+        plan_nadp = 'Нет подписки'
     # Если у пользователя есть активное состояние, пропускаем обработку этого хэндлера
     if current_state is not None:
         return
@@ -832,8 +890,10 @@ async def any_message_handler(message: types.Message, state: FSMContext):
                 profile_message = (
                     f"👤 Мой профиль\n\n"
                     f"🆔 Telegram ID: <code>{message.from_user.id}</code>\n"
+                    f"🔓 Подписка: {plan_nadp}\n"
                     f"🎬 Баланс: {round(await get_balance(message.from_user.id))} token🧾\n"
-                    f"⭐️ Пригласил: {len(await get_referal(message.from_user.id))}\n\n"
+                    f"⭐️ Пригласил: {len(await get_referal(message.from_user.id))}\n"
+                    
                     "Если нужна помощь - посмотрите справку или свяжитесь с администратором."
                 )
                 await message.answer(profile_message, reply_markup=keyboard,parse_mode=ParseMode.HTML)

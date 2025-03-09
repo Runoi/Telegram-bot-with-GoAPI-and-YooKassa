@@ -20,25 +20,27 @@ load_dotenv('keys.env')
 shop_id = os.getenv('SHOP_ID')
 secret_key = os.getenv('SECRET_KEY')
 
-async def create_payment(price):
+async def create_payment(price,expires_at):
     inn = int(os.getenv('INN'))
     try:
       idempotence_key = str(uuid.uuid4())
-      yookassa.Configuration.account_id = shop_id
-      yookassa.Configuration.secret_key = secret_key
+      # yookassa.Configuration.account_id = shop_id
+      # yookassa.Configuration.secret_key = secret_key
+      yookassa.Configuration.configure(shop_id, secret_key)
 
-      payment = yookassa.Payment.create({
-      "amount": {
+      invoice = yookassa.Invoice.create({
+      "payment_data":{
+        "amount": {
         "value": f"{price}.00",
         "currency": "RUB"
       },
       # "payment_method_data": {
       #   "type": "bank_card"
       # },
-      "confirmation": {
-        "type": "redirect",
-        "return_url": "https://t.me/avroraai_bot?start"
-      },
+      # "confirmation": {
+      #   "type": "redirect",
+      #   "return_url": "https://t.me/avroraai_bot?start"
+      # },
       "receipt": {
                   "customer":{
                       "inn":inn,
@@ -56,17 +58,37 @@ async def create_payment(price):
                       }
                   ]
               },
-      "description": "Покупка подписки",
-      "capture": True
+              "save_payment_method": True,
+              "capture": True,
+              "description": "Покупка подписки"
+              },
+     "cart": [
+        {
+            "description": "Подписка на AVRORA AI",
+            "price": {
+                "value": f"{price}.00",
+                "currency": "RUB"
+            },
+            "quantity": 1.000
+        }],
+      "delivery_method_data": {
+        "type": "self"},
+      "expires_at": expires_at,   
+      "locale": "ru_RU",
+      
   }, idempotence_key)
       
-      url = payment.confirmation.confirmation_url
+      # url = payment.confirmation.confirmation_url
+      if invoice.delivery_method is not None:
+        linkToInvoice = invoice.delivery_method.url
+      if invoice.payment_details is not None:
+        paymentId = invoice.payment_details.id
 
-      return url, payment.id
+      return linkToInvoice, paymentId
     
     except Exception as e:
         # Логируем ошибку и возвращаем None
-        print(f"Произошла ошибка при создании платежа: {e}")
+        print(f"Произошла ошибка при создании платежа(1): {e}")
         return None, None
 
 async def create_auto_payment(price: float, payment_method_id: str):
@@ -125,7 +147,7 @@ async def create_auto_payment(price: float, payment_method_id: str):
 
 async def get_payment(id):
     try:
-        payment = yookassa.Payment.find_one(id)
+        payment = yookassa.Invoice.find_one(id)
 
         # Проверяем статус платежа
         if payment.status == 'succeeded':

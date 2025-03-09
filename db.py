@@ -298,6 +298,20 @@ async def check_subsc(id):
         
         return False
     
+async def check_plan(id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute('SELECT plan FROM users WHERE user_id = ?', (id,))
+        user_data = await cursor.fetchone()
+        
+        if user_data and user_data[0]:  # Проверка на None
+            try:
+               
+                return user_data
+            except ValueError:
+                return False  # Если дата в БД повреждена, вернуть False
+        
+        return False    
+    
 
 async def check_and_issue_tokens():
     """
