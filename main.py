@@ -212,6 +212,53 @@ async def handle_admin_commands(message: types.Message):
             # Логируем другие ошибки
             logger.error(f"Произошла ошибка: {e}")
             await message.answer("❌ Произошла ошибка при отключении автоподписки.")
+        
+    elif command == "/giveprime":
+        if len(command_parts) < 4:
+            await message.answer("❌ Ошибка: недостаточно аргументов. Используйте /giveprime <user_id> <sub_type> <duration_days>.")
+            return
+
+        try:
+            user_id = int(command_parts[1])
+            sub_type = command_parts[2]
+            duration_days = int(command_parts[3])
+            await db.grant_subscription(user_id, sub_type, duration_days)
+            await message.answer(f"✅ Пользователю {user_id} выдана подписка {sub_type} на {duration_days} дней.")
+        except ValueError:
+            await message.answer("❌ Ошибка: неверный формат аргументов. <user_id> и <duration_days> должны быть числами.")
+        except Exception as e:
+            logger.error(f"Ошибка при выдаче подписки: {e}")
+            await message.answer("❌ Ошибка при выдаче подписки. Пожалуйста, попробуйте позже.")
+
+    elif command == "/unprime":
+        if len(command_parts) < 2:
+            await message.answer("❌ Ошибка: недостаточно аргументов. Используйте /unprime <user_id>.")
+            return
+
+        try:
+            user_id = int(command_parts[1])
+            await db.revoke_subscription(user_id)
+            await message.answer(f"✅ Подписка пользователя {user_id} отозвана.")
+        except ValueError:
+            await message.answer("❌ Ошибка: неверный ID пользователя. Укажите числовой ID.")
+        except Exception as e:
+            logger.error(f"Ошибка при отзыве подписки: {e}")
+            await message.answer("❌ Ошибка при отзыве подписки. Пожалуйста, попробуйте позже.")
+    elif command == "/help":
+        help_text = """
+📜 *Список доступных команд:*
+
+*/ban <user_id>* — Забанить пользователя.
+*/unban <user_id>* — Разбанить пользователя.
+*/givetoken <user_id> <tokens>* — Выдать токены пользователю.
+*/untoken <user_id> <tokens>* — Забрать токены у пользователя.
+*/automoney <user_id>* — Отключить автоподписку у пользователя.
+*/giveprime <user_id> <sub_type> <duration_days>* — Выдать подписку пользователю.
+*/unprime <user_id>* — Отозвать подписку у пользователя.
+*/help* — Показать это сообщение.
+        """
+        await message.answer(help_text, parse_mode="Markdown")
+        return
 
 
 

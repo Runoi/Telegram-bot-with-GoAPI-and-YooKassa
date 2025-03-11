@@ -554,4 +554,54 @@ async def mark_payment_as_processed(payment_id: str):
             "INSERT INTO processed_payments (payment_id) VALUES (?)",
             (payment_id,)
         )
-        await db.commit()                
+        await db.commit()
+
+async def grant_subscription(user_id: int, sub_type: str, duration_days: int):
+    """
+    Выдает подписку пользователю.
+
+    :param user_id: ID пользователя.
+    :param sub_type: Тип подписки (например, "start", "premium").
+    :param duration_days: Продолжительность подписки в днях.
+    """
+    try:
+        # Вычисляем дату истечения подписки
+        expiry_date = datetime.now() + timedelta(days=duration_days)
+        # Форматируем дату в формат "год-месяц-день"
+        expiry_date_str = expiry_date.strftime("%Y-%m-%d")
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute(
+                """
+                UPDATE users
+                SET sub = ?,plan = ?
+                WHERE user_id = ?
+                """,
+                (expiry_date_str,sub_type, user_id)
+            )
+            await db.commit()
+            logger.info(f"Пользователю {user_id} выдана подписка {sub_type} до {expiry_date}.")
+    except Exception as e:
+        logger.error(f"Ошибка при выдаче подписки пользователю {user_id}: {e}")
+        raise                
+
+async def revoke_subscription(user_id: int):
+    """
+    Отзывает подписку у пользователя.
+
+    :param user_id: ID пользователя.
+    """
+    try:
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute(
+                """
+                UPDATE users
+                SET sub = NULL
+                WHERE user_id = ?
+                """,
+                (user_id,)
+            )
+            await db.commit()
+            logger.info(f"Подписка пользователя {user_id} отозвана.")
+    except Exception as e:
+        logger.error(f"Ошибка при отзыве подписки у пользователя {user_id}: {e}")
+        raise
