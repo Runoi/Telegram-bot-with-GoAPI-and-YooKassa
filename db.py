@@ -23,24 +23,59 @@ logger = logging.getLogger(__name__)
 DB_NAME = 'music_bot.db'
 
 async def create_table():
-    # Создаем соединение с базой данных (если она не существует, она будет создана)
-    async with aiosqlite.connect(DB_NAME) as db:
-        # Создаем таблицу
-        await db.execute('''CREATE TABLE IF NOT EXISTS users (
-    user_id INTEGER PRIMARY KEY,
-    username TEXT,
-    referral_code TEXT UNIQUE,
-    referred_by TEXT,
-    balance REAL DEFAULT 0,
-    status INTEGER,
-    sub TEXT,
-    plan TEXT,
-    auto INTEGER DEFAULT 0,
-    payment_id TEXT                
-);''')
-        await db.commit()
+    """
+    Создает таблицы в базе данных, если они не существуют.
+    """
+    try:
+        # Создаем соединение с базой данных (если она не существует, она будет создана)
+        async with aiosqlite.connect(DB_NAME) as db:
+            # Создаем таблицу users
+            await db.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id INTEGER PRIMARY KEY,
+                    username TEXT,
+                    referral_code TEXT UNIQUE,
+                    referred_by TEXT,
+                    balance REAL DEFAULT 0,
+                    status INTEGER,
+                    sub TEXT,
+                    plan TEXT,
+                    auto INTEGER DEFAULT 0,
+                    payment_id TEXT                
+                );
+            ''')
+            logger.info("Таблица users создана или уже существует.")
 
-async def add_auto(user_id, payment_id):
+            # Создаем таблицу payments
+            await db.execute('''
+                CREATE TABLE IF NOT EXISTS payments (
+                    payment_id TEXT PRIMARY KEY,  
+                    user_id INTEGER,              
+                    sub_type TEXT,                
+                    tokens INTEGER,               
+                    status TEXT,                  
+                    created_at TIMESTAMP          
+                );
+            ''')
+            logger.info("Таблица payments создана или уже существует.")
+
+            # Сохраняем изменения
+            await db.commit()
+            logger.info("Изменения в базе данных сохранены.")
+
+    except aiosqlite.Error as e:
+        # Логируем ошибку
+        logger.error(f"Ошибка при создании таблиц: {e}")
+        raise  # Повторно выбрасываем исключение для обработки в вызывающей функции
+    
+async def add_auto(user_id: int, payment_method_id: str):
+    """
+    Сохраняет идентификатор способа оплаты и активирует автоплатеж для пользователя.
+
+    :param user_id: ID пользователя.
+    :param payment_method_id: Идентификатор сохраненного способа оплаты.
+    :return: True, если данные успешно обновлены, иначе False.
+    """
     try:
         async with aiosqlite.connect(DB_NAME) as db:
             # Проверяем, существует ли пользователь
@@ -49,7 +84,7 @@ async def add_auto(user_id, payment_id):
             await cursor.close()
 
             if not user_exists:
-                print(f"Пользователь с ID {user_id} не найден.")
+                logger.error(f"Пользователь с ID {user_id} не найден.")
                 return False
 
             # Обновляем данные пользователя
@@ -57,16 +92,15 @@ async def add_auto(user_id, payment_id):
                 UPDATE users 
                 SET auto = 1, payment_id = ? 
                 WHERE user_id = ?
-            ''', (payment_id, user_id))
+            ''', (payment_method_id, user_id))
 
             # Сохраняем изменения
             await db.commit()
-            print(f"Данные пользователя {user_id} успешно обновлены.")
+            logger.info(f"Данные пользователя {user_id} успешно обновлены.")
             return True
 
     except aiosqlite.Error as e:
-        # Логируем ошибку
-        print(f"Ошибка при обновлении данных пользователя: {e}")
+        logger.error(f"Ошибка при обновлении данных пользователя: {e}")
         return False
     
 async def un_auto(user_id):
@@ -310,7 +344,20 @@ async def check_plan(id):
             except ValueError:
                 return False  # Если дата в БД повреждена, вернуть False
         
-        return False    
+        return False
+
+async def get_user(id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute('SELECT username FROM users WHERE user_id = ?', (id,))
+        user_data = await cursor.fetchone()
+        
+        if user_data and user_data[0]:  # Проверка на None
+            try:              
+                return user_data
+            except ValueError:
+                return False  # Если дата в БД повреждена, вернуть False
+        
+        return False     
     
 
 async def check_and_issue_tokens():
@@ -369,6 +416,7 @@ async def renew_subscription():
         price_s = int(os.getenv('PRICE_START'))
         price_m = int(os.getenv('PRICE_MASTER'))
         price_y = int(os.getenv('PRICE_YEAR'))
+        
         async with aiosqlite.connect(DB_NAME) as db:
             # Получаем текущую дату
             today = datetime.now().date()
@@ -385,37 +433,125 @@ async def renew_subscription():
                 # Определяем стоимость подписки в зависимости от плана
                 price = 0
                 if plan == "start":
-                    price = price_s # Пример стоимости
+                    price = price_s  # Стоимость для плана "Старт"
                 elif plan == "master":
-                    price = price_m  # Пример стоимости
+                    price = price_m  # Стоимость для плана "Мастер"
                 elif plan == "year":
-                    price = price_y  # Пример стоимости
-                
+                    price = price_y  # Стоимость для плана "Годовая"
+
                 if price > 0:
+                    # Устанавливаем срок действия платежа на 15 минут вперед
+                    expires_at = (datetime.now() + timedelta(minutes=15)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+                    
                     # Создаем новый платеж с использованием сохраненного payment_id
-                    confirmation_url, new_payment_id = await create_auto_payment(price, payment_id)
-                    asyncio.sleep(10)
-                    if confirmation_url and new_payment_id:
+                    new_payment_id = await create_auto_payment(
+                        price=str(price),  # Цена подписки
+                        expires_at=expires_at,  # Время истечения срока действия платежа
+                        user_id=user_id,  # ID пользователя
+                        sub_type=plan,  # Тип подписки
+                        tokens=0,  # Количество токенов (можно передать 0, если не используется)
+                        payment_method_id=payment_id  # Идентификатор сохраненного способа оплаты
+                    )
+
+                    if new_payment_id:
+                        # Обновляем дату подписки
                         if plan != 'year':
-                            # Обновляем дату подписки 
                             new_sub_date = (datetime.now() + timedelta(days=30)).date()
-                            await db.execute(
-                                'UPDATE users SET sub = ?, payment_id = ? WHERE user_id = ?',
-                                (new_sub_date, new_payment_id, user_id)
-                            )
-                            await db.commit()
-                            logger.info(f"Подписка пользователя {user_id} успешно продлена до {new_sub_date}.")
                         else:
-                            # Обновляем дату подписки 
                             new_sub_date = (datetime.now() + timedelta(days=360)).date()
-                            await db.execute(
-                                'UPDATE users SET sub = ?, payment_id = ? WHERE user_id = ?',
-                                (new_sub_date, new_payment_id, user_id)
-                            )
-                            await db.commit()
-                            logger.info(f"Подписка пользователя {user_id} успешно продлена до {new_sub_date}.")
+
+                        # Обновляем данные пользователя
+                        await db.execute(
+                            'UPDATE users SET sub = ?, payment_id = ? WHERE user_id = ?',
+                            (new_sub_date, new_payment_id, user_id)
+                        )
+                        await db.commit()
+                        logger.info(f"Подписка пользователя {user_id} успешно продлена до {new_sub_date}.")
                     else:
                         logger.error(f"Не удалось создать платеж для пользователя {user_id}.")
 
     except Exception as e:
         logger.error(f"Ошибка при продлении подписки: {e}", exc_info=True)
+
+
+async def save_payment(payment_id: str, user_id: int, sub_type: str, tokens: int):
+    """
+    Сохраняет информацию о платеже в базу данных.
+
+    :param payment_id: Уникальный идентификатор платежа.
+    :param user_id: Идентификатор пользователя.
+    :param sub_type: Тип подписки.
+    :param tokens: Количество токенов.
+    """
+    try:
+        async with aiosqlite.connect(DB_NAME) as db:
+            query = """
+            INSERT INTO payments (payment_id, user_id, sub_type, tokens, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """
+            # Передаем параметры в виде кортежа
+            await db.execute(query, (payment_id, user_id, sub_type, tokens, "pending", datetime.now()))
+            await db.commit()
+    except Exception as e:
+        logger.error(f"Ошибка при сохранении платежа: {e}")
+        raise  # Повторно вызываем исключение для обработки на уровне выше
+
+
+async def select_payment(payment_id: str):
+    """
+    Ищет платеж в базе данных по его ID.
+
+    :param payment_id: Уникальный ID платежа.
+    :return: Данные платежа или None, если платеж не найден.
+    """
+    try:
+        async with aiosqlite.connect(DB_NAME) as db:
+            cursor = await db.execute(
+                "SELECT * FROM payments WHERE payment_id = ?", (payment_id,)
+            )
+            payment = await cursor.fetchone()
+            return payment
+    except aiosqlite.Error as e:
+        logger.error(f"Ошибка при поиске платежа {payment_id}: {e}")
+        return None
+
+async def update_payment(payment_id: str):
+    """
+    Обновляет статус платежа на 'succeeded'.
+
+    :param payment_id: Уникальный ID платежа.
+    """
+    try:
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute(
+                "UPDATE payments SET status = ? WHERE payment_id = ?",
+                ("succeeded", payment_id)
+            )
+            await db.commit()
+            logger.info(f"Статус платежа {payment_id} обновлен на 'succeeded'.")
+    except aiosqlite.Error as e:
+        logger.error(f"Ошибка при обновлении платежа {payment_id}: {e}")
+        raise
+
+async def is_payment_processed(payment_id: str) -> bool:
+    """
+    Проверяет, был ли платеж уже обработан.
+    """
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute(
+            "SELECT payment_id FROM payments WHERE payment_id = ?",
+            (payment_id,)
+        )
+        result = await cursor.fetchone()
+        return bool(result)  # True, если платеж уже обработан
+
+async def mark_payment_as_processed(payment_id: str):
+    """
+    Помечает платеж как обработанный.
+    """
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "INSERT INTO processed_payments (payment_id) VALUES (?)",
+            (payment_id,)
+        )
+        await db.commit()                

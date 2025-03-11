@@ -6,11 +6,17 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton,WebAppInfo,
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.filters import StateFilter
+from aiogram.types import Update
+from aiogram.exceptions import TelegramRetryAfter
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request, BackgroundTasks,HTTPException
+from fastapi.responses import JSONResponse
+import uvicorn
 import os
 from datetime import datetime, timedelta
 import datetime
 import time
+import requests
 import asyncio
 import logging
 import random
@@ -20,7 +26,7 @@ import db
 import aimu
 from db import add_referal,get_referal,get_ref_url,get_balance,deduct_tokens,check_status,ban,unban, check_all,check_ref,give_tokens,get_subsc,check_subsc, add_auto, un_auto,check_and_issue_tokens,renew_subscription,check_plan
 from aiogram.enums.parse_mode import ParseMode
-from payments import create_payment,get_payment
+from payments import create_payment
 
 
 
@@ -34,14 +40,14 @@ logging.basicConfig(
         logging.StreamHandler()  # Логи также выводятся в консоль (опционально)
     ]
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) 
 
 load_dotenv('keys.env')
 bot_token = os.getenv('BOT_TOKEN')
 ADMIN_CHANNEL_ID = -1002337007587
 img_face = FSInputFile('face_image.jpg')
 exemple_music = FSInputFile('exemple.mp3',filename='Пример песни')
-
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 
 bot = Bot(token=bot_token)
 storage = MemoryStorage()
@@ -56,6 +62,25 @@ class MusicGeneration(StatesGroup):
     waiting_for_generate = State() 
     waiting_for_confirmation = State()  
     buying = State()
+
+# @asynccontextmanager
+# async def lifespan(app: FastAPI):
+#     """Настраиваем вебхук при запуске"""
+#     current_webhook = await bot.get_webhook_info()
+
+#     if current_webhook.url != WEBHOOK_URL:
+#         try:
+#             await bot.set_webhook(WEBHOOK_URL)
+#         except TelegramRetryAfter as e:
+#             await asyncio.sleep(e.retry_after)  # Ждём, сколько скажет Telegram
+#             await bot.set_webhook(WEBHOOK_URL)
+
+#     yield
+
+#     await bot.delete_webhook()
+
+# app = FastAPI(lifespan=lifespan)
+
 
 async def set_commands(bot: Bot):
     commands = [
@@ -705,7 +730,10 @@ async def pay(message:types.Message,state: FSMContext):
     
 
 @dp.callback_query(lambda query: query.data == "my_refs")
-async def get_sub(callback_query: types.CallbackQuery):
+async def get_sub(callback_query: types.CallbackQuery,state: FSMContext):
+    current_state = await state.get_state()
+    if current_state is not None:
+            await state.clear() 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🌘Старт", callback_data="sub_start"),
          InlineKeyboardButton(text="🌗Мастер", callback_data="sub_master"),
@@ -730,77 +758,170 @@ async def get_sub(callback_query: types.CallbackQuery):
         )
     await callback_query.message.edit_text(mess, reply_markup=keyboard,parse_mode=ParseMode.HTML)
 
-
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+import pytz
 async def process_subscription(callback_query: types.CallbackQuery, state: FSMContext, sub_type: str, price_env: str, tokens: int):
+    """
+    Обрабатывает запрос на подписку: создает платеж и отправляет пользователю ссылку для оплаты.
+
+    :param callback_query: CallbackQuery от пользователя.
+    :param state: Состояние FSM.
+    :param sub_type: Тип подписки (например, "start", "master", "year").
+    :param price_env: Название переменной окружения с ценой подписки.
+    :param tokens: Количество токенов, которые пользователь получит после оплаты.
+    """
     try:
         user_id = callback_query.from_user.id
         current_state = await state.get_state()
         if current_state is not None:
             await state.clear()
-        from datetime import datetime,timedelta
-        import pytz
+        from datetime import datetime
         # Получаем текущее время в UTC
         now_datetime = datetime.now(pytz.utc)
-        
-        # Устанавливаем срок действия платежа на 15 минут вперед
-        td = now_datetime + timedelta(minutes=15)
-        
-        # Преобразуем в формат ISO 8601 с миллисекундами
-        expires_at = td.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        expires_at = (now_datetime + timedelta(minutes=15)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
         sub_price = os.getenv(price_env)
-        
-        
-        await state.set_state(MusicGeneration.buying)
-        url, payment_id = await create_payment(sub_price,expires_at)
+
+        if not sub_price:
+            logger.error(f"Не удалось получить цену подписки из переменной окружения: {price_env}")
+            await callback_query.message.edit_text("Произошла ошибка. Попробуйте позже.")
+            return
+
+        # Создаем платеж
+        url, payment_id = await create_payment(sub_price, expires_at, user_id, sub_type, tokens)
         if not url or not payment_id:
+            logger.error(f"Не удалось создать платеж для пользователя {user_id}")
             await callback_query.message.edit_text("Не удалось создать платёж. Попробуйте ещё раз.")
             return
-        
-        now = datetime.now()
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=f"Оплатить {sub_price} руб.", web_app=WebAppInfo(url=url))],
-            [InlineKeyboardButton(text=f"⬅ Назад", callback_data='my_refs')]
-        ])
-        
-        await callback_query.message.edit_text(f'✅Оплачивайте через официальные платежные с-мы безопасно. Нам доверяю: Paypal, Sber, Yandex money, СБП, Vk pay и другие.\n', reply_markup=keyboard)
+
+        # Сохраняем платеж в базу данных
+        await save_payment(payment_id, user_id, sub_type, tokens)
+
+        # Создаем клавиатуру с кнопкой для оплаты
+        keyboard = InlineKeyboardBuilder()
+        keyboard.row(types.InlineKeyboardButton(text=f"Оплатить {sub_price} руб.", url=url))
+        keyboard.row(types.InlineKeyboardButton(text="⬅ Назад", callback_data='my_refs'))
+
+        # Отправляем сообщение с инструкцией
+        await callback_query.message.edit_text(
+            '✅Оплачивайте через официальные платежные с-мы безопасно. Нам доверяют: Paypal, Sber, Yandex money, СБП, Vk pay и другие.\n',
+            reply_markup=keyboard.as_markup()
+        )
         await callback_query.answer('', cache_time=60)
-        expiry_date = (now + datetime.timedelta(days=30)).strftime('%Y-%m-%d')
-        
-        for _ in range():
-            await asyncio.sleep(5)
-            payment = await get_payment(payment_id)
-            
-            if payment is False:
-                continue
-            #print(type(payment))
-            if payment or payment[0] == 'succeeded':
-                
-                if isinstance(payment, tuple):
-                    await add_auto(user_id, payment[1])
-                
-                await get_subsc(expiry_date, sub_type, user_id)
-                await give_tokens(user_id, tokens)
-                await bot.send_message(ADMIN_CHANNEL_ID, f'Пользователь {user_id} оплатил подписку {sub_type} {"с автопродлением" if isinstance(payment, tuple) else "без автопродления"}')
-                await state.clear()
-                await activate(callback_query, state)
-                break
-        else:
-            await bot.send_message(ADMIN_CHANNEL_ID,f"{callback_query.from_user.id} (@{callback_query.from_user.username}) отменил оплату")
+
     except Exception as e:
-        print(f"Ошибка: {e}")
+        logger.error(f"Ошибка в process_subscription: {e}")
         await callback_query.answer("Произошла ошибка. Попробуйте позже.")
         await state.clear()
 
+from db import save_payment,select_payment,update_payment
+async def handle_payment_webhook(data: dict, bot: Bot):
+    """
+    Обрабатывает вебхук с событием 'payment.succeeded'.
+
+    :param data: Данные вебхука.
+    :param bot: Экземпляр бота для отправки уведомлений.
+    :return: JSONResponse с результатом обработки.
+    """
+    try:
+        if data.get('event') == 'payment.succeeded':
+            payment_id = data.get('object', {}).get('invoice_details', {}).get('id')
+            user_id = data.get('object', {}).get('metadata', {}).get('user_id')
+            sub_type = data.get('object', {}).get('metadata', {}).get('sub_type')
+            tokens = int(data.get('object', {}).get('metadata', {}).get('tokens', 0))
+            payment_method_id = data.get('object', {}).get('payment_method', {}).get('id')
+            payment_method_saved = data.get('object', {}).get('payment_method', {}).get('saved', False)
+
+            # Проверяем, что платеж существует в базе данных
+            payment = await select_payment(payment_id)
+            if not payment:
+                logger.error(f"Платеж {payment_id} не найден в базе данных")
+                return JSONResponse(
+                    content={"status": "error", "message": f"Платеж {payment_id} не найден"},
+                    status_code=404
+                )
+
+            # Обращение к данным по индексам (если payment - кортеж)
+            payment_status = payment[4]  # Пример: статус находится на 4-й позиции
+            if payment_status == "succeeded":
+                logger.warning(f"Платеж {payment_id} уже был обработан")
+                return JSONResponse(
+                    content={"status": "ignored", "message": "Payment already processed"}
+                )
+
+            # Обновляем статус платежа
+            await update_payment(payment_id)
+            from datetime import datetime
+            # Начисляем токены и активируем подписку
+            await give_tokens(user_id, tokens)
+            expiry_date = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
+            await get_subsc(expiry_date, sub_type, user_id)
+
+            # Если способ оплаты сохранен, сохраняем payment_method.id
+            if payment_method_saved and payment_method_id:
+                await add_auto(user_id, payment_method_id)
+                logger.info(f"Способ оплаты сохранен для пользователя {user_id}: {payment_method_id}")
+            # Исправленный код
+            user_info = await db.get_user(user_id)  # Добавляем await
+            username = user_info[0] if user_info else "Unknown"  # Проверяем, что результат не None
+            # Уведомляем администратора
+            await bot.send_message(
+                ADMIN_CHANNEL_ID,
+                f'Пользователь {user_id}(@{username}) оплатил подписку {sub_type}. Токенов начислено: {tokens}'
+            )
+
+            return JSONResponse(content={"status": "ok"})
+
+        else:
+            logger.info(f"Игнорируем событие: {data.get('event')}")
+            return JSONResponse(
+                content={"status": "ignored", "message": "Event is not payment.succeeded"}
+            )
+
+    except Exception as e:
+        logger.error(f"Ошибка при обработке вебхука: {e}")
+        return JSONResponse(
+            content={"status": "error", "message": str(e)},
+            status_code=500
+        )
+# async def check_status_payment(user_id:int,payment_id:str, bot:Bot,sub_type:str,tokens:int,state:FSMContext, callback_query:types.CallbackQuery):
+#     from datetime import datetime
+#     now = datetime.now()
+#     expiry_date = (now + timedelta(days=30)).strftime('%Y-%m-%d')
+#     for _ in range(10):
+#             await asyncio.sleep(5)
+#             payment = await get_payment(payment_id)
+            
+#             if payment is False:
+#                 continue
+#             #print(type(payment))
+#             if payment or payment[0] == 'succeeded':
+                
+#                 if isinstance(payment, tuple):
+#                     await add_auto(user_id, payment[1])
+                
+#                 await get_subsc(expiry_date, sub_type, user_id)
+#                 await give_tokens(user_id, tokens)
+#                 await bot.send_message(ADMIN_CHANNEL_ID, f'Пользователь {user_id} оплатил подписку {sub_type} {"с автопродлением" if isinstance(payment, tuple) else "без автопродления"}')
+#                 await activate(callback_query, state)
+#                 break
+#     else:
+#             await bot.send_message(ADMIN_CHANNEL_ID,f"{callback_query.from_user.id} (@{callback_query.from_user.username}) отменил оплату")
+
+
+
 @dp.callback_query(lambda query: query.data == "sub_start")
 async def sub_start(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.answer("", cache_time=1)
     await process_subscription(callback_query, state, "start", 'PRICE_START', 20)
 
 @dp.callback_query(lambda query: query.data == "sub_master")
 async def sub_master(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.answer("", cache_time=1)
     await process_subscription(callback_query, state, "master", 'PRICE_MASTER', 60)
 
 @dp.callback_query(lambda query: query.data == "sub_year")
 async def sub_year(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.answer("", cache_time=1)
     await process_subscription(callback_query, state, "year", 'PRICE_YEAR', 60)
 
 @dp.callback_query(lambda query: query.data == 'free')
@@ -916,33 +1037,173 @@ async def any_message_handler(message: types.Message, state: FSMContext):
                 await message.answer_photo(img_face, caption=face_message, reply_markup=sub_keyboard)   
 
 async def daily_check():
+    """Фоновая задача для ежедневной проверки."""
     while True:
-
         logging.info("Запуск ежедневной проверки подписок для токенов...")
         await check_and_issue_tokens()
         logging.info("Ежедневная проверка завершена.")
-        
-        # Ждем до следующего дня
         await asyncio.sleep(86400)  # 86400 секунд = 1 день
 
 async def renw_check():
+    """Фоновая задача для ежедневной проверки продления."""
     while True:
-
         logging.info("Запуск ежедневной проверки подписок для продления...")
         await renew_subscription()
         logging.info("Ежедневная проверка завершена.")
-        
-        # Ждем до следующего дня
         await asyncio.sleep(86401)  # 86400 секунд = 1 день
 
-async def main():
+async def startup():
+    """Код, который выполняется при запуске приложения."""
+    # Настройка вебхука
+    current_webhook = await bot.get_webhook_info()
+    if current_webhook.url != WEBHOOK_URL:
+        try:
+            await bot.set_webhook(WEBHOOK_URL)
+            logging.info("Вебхук успешно установлен.")
+        except TelegramRetryAfter as e:
+            logging.warning(f"Telegram просит подождать {e.retry_after} секунд перед установкой вебхука.")
+            await asyncio.sleep(e.retry_after)
+            await bot.set_webhook(WEBHOOK_URL)
+            logging.info("Вебхук успешно установлен после ожидания.")
 
+    # Создаем таблицы в базе данных
     await db.create_table()
+    logging.info("Таблицы в базе данных созданы или уже существуют.")
+
+    # Устанавливаем команды бота
     await set_commands(bot)
+    logging.info("Команды бота установлены.")
+
+    # Запускаем фоновые задачи
     asyncio.create_task(daily_check())
     asyncio.create_task(renw_check())
-    await dp.start_polling(bot)
+    logging.info("Фоновые задачи запущены.")
 
-# Запуск бота
+    # Запускаем бота
+    asyncio.create_task(dp.start_polling())
+    logging.info("Бот запущен.")
+
+async def shutdown():
+    """Код, который выполняется при завершении приложения."""
+    # Удаление вебхука
+    await bot.delete_webhook()
+    logging.info("Вебхук успешно удален.")
+
+    # Останавливаем фоновые задачи
+    logging.info("Фоновые задачи остановлены.")
+
+    # Закрываем соединение с ботом
+    await bot.session.close()
+    logging.info("Соединение с ботом закрыто.")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Контекстный менеджер для управления жизненным циклом приложения."""
+    await startup()
+    yield
+    await shutdown()
+
+# Создание приложения FastAPI
+app = FastAPI(lifespan=lifespan)
+
+@app.post("/webhook")
+async def webhook(request: Request, background_tasks: BackgroundTasks):
+    """Обработчик вебхуков в фоне"""
+    update = Update.model_validate_json(await request.body())
+    background_tasks.add_task(dp.feed_update, bot, update)  # Запускаем обработку в фоне
+    return {"status": "ok"}  # Возвращаем ответ сразу, без ожидания обработки
+
+@app.post("/payments")
+async def webhook_payments(request: Request):
+    """
+    Обрабатывает входящие вебхуки от платежной системы.
+    """
+    try:
+        # Получаем данные из вебхука
+        data = await request.json()
+        logger.info(f"Получен вебхук: {data}")
+
+        # Проверяем, что данные содержат обязательные поля
+        if not data.get('event') or not data.get('object'):
+            logger.error("Вебхук не содержит обязательных полей: 'event' или 'object'")
+            raise HTTPException(status_code=400, detail="Invalid webhook data")
+
+        # Извлекаем ID платежа
+        payment_id = data.get('object', {}).get('id')
+        if not payment_id:
+            logger.error("Вебхук не содержит ID платежа.")
+            raise HTTPException(status_code=400, detail="Payment ID is missing")
+
+        # Проверяем, был ли платеж уже обработан
+        if await db.is_payment_processed(payment_id):
+            logger.info(f"Платеж {payment_id} уже был обработан.")
+            return JSONResponse(
+                content={"status": "ignored", "message": "Payment already processed"},
+                status_code=200
+            )
+
+        # Проверяем, является ли это автоплатежом
+        metadata = data.get('object', {}).get('metadata', {})
+        if metadata.get('auto') == 'true':
+            logger.info("Пропускаем обработку автоплатежа.")
+            return JSONResponse(
+                content={"status": "ignored", "message": "Автоплатеж не требует обработки."},
+                status_code=200
+            )
+
+        # Обрабатываем вебхук
+        result = await handle_payment_webhook(data, bot)
+
+        # Помечаем платеж как обработанный
+        logger.info(f"Платеж {payment_id} помечен как обработанный.")
+
+        # Выполняем команду /start для пользователя
+        user_id = metadata.get('user_id')
+        if user_id:
+
+            # Создаем объект Message, имитирующий команду /start
+            message = types.Message(
+                message_id=1,  # Уникальный ID сообщения (можно использовать временное значение)
+                date=datetime.datetime.now(),  # Текущая дата и время
+                chat=types.Chat(
+                    id=int(user_id),  # ID чата пользователя
+                    type="private"  # Тип чата (личный)
+                ),
+                from_user=types.User(
+                    id=int(user_id),  # ID пользователя
+                    is_bot=False,  # Пользователь не является ботом
+                    first_name="User"  # Имя пользователя (можно оставить пустым)
+                ),
+                text="/start"  # Текст команды
+            )
+            # Создаем объект Update
+            update = types.Update(
+                update_id=1,  # Уникальный ID обновления (можно использовать временное значение)
+                message=message  # Передаем созданное сообщение
+            )
+            # Вызываем обработчик команды /start
+            await dp.feed_update(bot, update)
+            logger.info(f"Для пользователя {user_id} выполнена команда /start.")
+
+        # Возвращаем результат обработки
+        return result
+
+    except HTTPException as e:
+        # Обрабатываем ошибки FastAPI (например, неверные данные)
+        logger.error(f"Ошибка в обработчике вебхуков: {e.detail}")
+        return JSONResponse(
+            content={"status": "error", "message": e.detail},
+            status_code=e.status_code
+        )
+
+    except Exception as e:
+        # Логируем другие ошибки
+        logger.error(f"Ошибка в обработчике вебхуков: {e}")
+        return JSONResponse(
+            content={"status": "error", "message": str(e)},
+            status_code=500
+        )
+# Запуск приложения
 if __name__ == '__main__':
-    asyncio.run(main())
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8443, reload=True)
