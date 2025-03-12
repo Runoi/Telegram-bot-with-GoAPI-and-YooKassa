@@ -36,7 +36,7 @@ logging.basicConfig(
     level=logging.INFO,  # Уровень логирования (INFO, DEBUG, WARNING, ERROR, CRITICAL)
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Формат логов
     handlers=[
-        logging.FileHandler('logs/bot.log'),  # Логи записываются в файл bot.log
+        logging.FileHandler('logs/bot.log',encoding='utf-8'),  # Логи записываются в файл bot.log
         logging.StreamHandler()  # Логи также выводятся в консоль (опционально)
     ]
 )
@@ -832,7 +832,7 @@ async def process_subscription(callback_query: types.CallbackQuery, state: FSMCo
             logger.error(f"Не удалось получить цену подписки из переменной окружения: {price_env}")
             await callback_query.message.edit_text("Произошла ошибка. Попробуйте позже.")
             return
-
+        
         # Создаем платеж
         url, payment_id = await create_payment(sub_price, expires_at, user_id, sub_type, tokens)
         if not url or not payment_id:
@@ -1166,6 +1166,7 @@ async def webhook_payments(request: Request):
     Обрабатывает входящие вебхуки от платежной системы.
     """
     try:
+        
         # Получаем данные из вебхука
         data = await request.json()
         logger.info(f"Получен вебхук: {data}")

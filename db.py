@@ -14,7 +14,7 @@ logging.basicConfig(
     level=logging.INFO,  # Уровень логирования (INFO, DEBUG, WARNING, ERROR, CRITICAL)
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Формат логов
     handlers=[
-        logging.FileHandler('logs/bot.log'),  # Логи записываются в файл bot.log
+        logging.FileHandler('logs/bot.log',encoding='utf-8'),  # Логи записываются в файл bot.log
         logging.StreamHandler()  # Логи также выводятся в консоль (опционально)
     ]
 )
