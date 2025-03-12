@@ -672,7 +672,7 @@ async def handle_music_generation(callback_query: types.CallbackQuery, state: FS
             await callback_query.message.answer(
                 f'Не хватает токенов. Ваш баланс - {balance}. Возвращение в главное меню',
             )
-            await activate(callback_query)
+            await activate(callback_query,state)
         else:
             await callback_query.answer()  # Подтверждаем получение callback
             await deduct_tokens(callback_query.from_user.id, 1)  # Списываем токен
@@ -734,7 +734,7 @@ async def handle_music_generation(callback_query: types.CallbackQuery, state: FS
                     await callback_query.message.answer('💜 Сейчас у нас очень много запросов.  Произошла ошибка, повторите ваш запрос позже, либо активируйте подписку для приоритетной очереди.')
                     
                     await bot.send_message(ADMIN_CHANNEL_ID, f"🚨 Общая ошибка генерации музыки: API вернул ошибку")
-                    activate(callback_query,state)
+                    await activate(callback_query,state)
                     break
             # Обновляем баланс
             # balance = await get_balance(callback_query.from_user.id)
@@ -744,7 +744,7 @@ async def handle_music_generation(callback_query: types.CallbackQuery, state: FS
 
     except Exception as e:
         #await callback_query.message.answer(f"Произошла ошибка")
-        await bot.send_message(ADMIN_CHANNEL_ID,f"Произошла ошибка: {e}\n У пользователя @{callback_query.from_user.username}")
+        await bot.send_message(ADMIN_CHANNEL_ID,f"Произошла ошибка: {e}\n У пользователя @{callback_query.from_user.username} ({callback_query.from_user.id})")
     
 @dp.message(Command('pay'))
 async def pay(message:types.Message,state: FSMContext):
