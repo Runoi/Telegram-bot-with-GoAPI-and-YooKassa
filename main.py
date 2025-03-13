@@ -1056,7 +1056,7 @@ async def any_message_handler(message: types.Message, state: FSMContext):
     # Проверяем текущее состояние пользователя
     current_state = await state.get_state()
     # Если состояние пользователя - waiting_for_genre, завершаем выполнение хэндлера
-    if current_state == "waiting_for_genre":
+    if current_state == "waiting_for_genre" or current_state == 'waiting_for_lyrics':
         return
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
