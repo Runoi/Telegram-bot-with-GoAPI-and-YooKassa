@@ -363,6 +363,7 @@ async def get_user(id):
 async def check_and_issue_tokens():
     """
     Проверяет подписку пользователей и начисляет токены в зависимости от плана.
+    Токены начисляются один раз в месяц, в день, соответствующий дате подписки.
     """
     try:
         
@@ -372,36 +373,48 @@ async def check_and_issue_tokens():
 
             # Выбираем пользователей с активной подпиской
             cursor = await db.execute(
-                'SELECT user_id, plan FROM users WHERE sub >= ?',
+                'SELECT user_id, plan, sub, last_token_issue_date FROM users WHERE sub >= ?',
                 (today,)
             )
             users = await cursor.fetchall()
-            print(users)
-            # Начисляем токены в зависимости от плана
-            for user_id, plan in users:
-                
-                tokens = 0
-                if plan == "start":
-                    tokens = 20
-                elif plan == "master":
-                    tokens = 60
-                elif plan == "year":
-                    # Проверяем, что текущий день месяца совпадает с днем начала подписки
-                    # (например, если подписка началась 15 числа, то начисляем 15 числа каждого месяца)
-                    user_cursor = await db.execute(
-                        'SELECT sub FROM users WHERE user_id = ?',
-                        (user_id,)
-                    )
-                    sub_date = (await user_cursor.fetchone())[0]
-                    if sub_date:  # Проверяем, что sub_date не None
-                        sub_date = datetime.strptime(sub_date, "%Y-%m-%d").date()
-                        if today.day == sub_date.day:
-                            tokens = 60
 
-                if tokens > 0:
-                    # Начисляем токены
-                    await give_tokens(user_id, tokens)
-                    #logging.info(f"Начислено {tokens} токенов пользователю {user_id}.")
+            # Начисляем токены в зависимости от плана
+            for user_id, plan, sub_date, last_token_issue_date in users:
+                if not sub_date:  # Пропускаем, если дата подписки не указана
+                    continue
+
+                # Преобразуем дату подписки в объект date
+                sub_date = datetime.strptime(sub_date, "%Y-%m-%d").date()
+
+                # Проверяем, что сегодняшний день месяца совпадает с днем подписки
+                if today.day == sub_date.day:
+                    # Проверяем, что токены еще не начислялись в этом месяце
+                    if last_token_issue_date:
+                        last_issue_date = datetime.strptime(last_token_issue_date, "%Y-%m-%d").date()
+                        if last_issue_date.month == today.month and last_issue_date.year == today.year:
+                            continue  # Токены уже начислены в этом месяце
+
+                    # Начисляем токены в зависимости от плана
+                    tokens = 0
+                    if plan == "start":
+                        tokens = 20
+                    elif plan == "master":
+                        tokens = 60
+                    elif plan == "year":
+                        tokens = 60
+
+                    if tokens > 0:
+                        # Начисляем токены
+                        await give_tokens(user_id, tokens)
+
+                        # Обновляем дату последнего начисления токенов
+                        await db.execute(
+                            'UPDATE users SET last_token_issue_date = ? WHERE user_id = ?',
+                            (today.strftime("%Y-%m-%d"), user_id))
+                        await db.commit()
+
+                        # Логируем начисление токенов
+                        print(f"Начислено {tokens} токенов пользователю {user_id}.")
 
     except Exception as e:
         #logging.error(f"Ошибка при проверке и начислении токенов: {e}")
