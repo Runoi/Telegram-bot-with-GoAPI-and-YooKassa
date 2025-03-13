@@ -574,7 +574,7 @@ async def choice_lyric(callback_query: types.CallbackQuery, state: FSMContext):
     updated_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Рок📀 ✅" if selected_genre == "rock" else "Рок📀", callback_data="rock"),
          InlineKeyboardButton(text="Рэп💿 ✅" if selected_genre == "rap" else "Рэп💿", callback_data="rap")],
-        [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
+        [InlineKeyboardButton(text="🔙Назад", callback_data="simple")]
     ])
 
     # Редактируем сообщение с обновлённой клавиатурой
@@ -622,7 +622,7 @@ async def process_hard_mode_genre(message: types.Message, state: FSMContext):
 
     # Клавиатура с кнопкой "Назад"
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
+        [InlineKeyboardButton(text="🔙Назад", callback_data="hard")]
     ])
 
     # Отправляем сообщение с инструкцией
@@ -641,7 +641,7 @@ async def harde_mode(message: types.Message, state: FSMContext):
     await state.set_state(MusicGeneration.waiting_for_lyrics_full)
     # Создаем клавиатуру с кнопкой "Назад"
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
+        [InlineKeyboardButton(text="🔙Назад", callback_data="simple")]
     ])
     
     await message.answer(
