@@ -233,6 +233,33 @@ async def handle_admin_commands(message: types.Message):
             "Ваш тариф активирован."
         )
             await bot.send_message(chat_id=user_id, text=thank_you_message)
+            # Выполняем команду /start для пользователя
+        
+            if user_id:
+
+                # Создаем объект Message, имитирующий команду /start
+                message = types.Message(
+                    message_id=1,  # Уникальный ID сообщения (можно использовать временное значение)
+                    date=datetime.datetime.now(),  # Текущая дата и время
+                    chat=types.Chat(
+                        id=int(user_id),  # ID чата пользователя
+                        type="private"  # Тип чата (личный)
+                    ),
+                    from_user=types.User(
+                        id=int(user_id),  # ID пользователя
+                        is_bot=False,  # Пользователь не является ботом
+                        first_name="User"  # Имя пользователя (можно оставить пустым)
+                    ),
+                    text="/start"  # Текст команды
+                )
+                # Создаем объект Update
+                update = types.Update(
+                    update_id=1,  # Уникальный ID обновления (можно использовать временное значение)
+                    message=message  # Передаем созданное сообщение
+                )
+                # Вызываем обработчик команды /start
+                await dp.feed_update(bot, update)
+                # Отправляем сообщение с благодарностью и информацией об активации тарифа
 
         except ValueError:
             await message.answer("❌ Ошибка: неверный формат аргументов. <user_id> и <duration_days> должны быть числами.")
@@ -1300,6 +1327,35 @@ async def webhook_payments(request: Request):
         metadata = data.get('object', {}).get('metadata', {})
         if metadata.get('auto') == 'true':
             logger.info("Пропускаем обработку автоплатежа.")
+            # Выполняем команду /start для пользователя
+            user_id = metadata.get('user_id')
+            if user_id:
+
+                # Создаем объект Message, имитирующий команду /start
+                message = types.Message(
+                    message_id=1,  # Уникальный ID сообщения (можно использовать временное значение)
+                    date=datetime.datetime.now(),  # Текущая дата и время
+                    chat=types.Chat(
+                        id=int(user_id),  # ID чата пользователя
+                        type="private"  # Тип чата (личный)
+                    ),
+                    from_user=types.User(
+                        id=int(user_id),  # ID пользователя
+                        is_bot=False,  # Пользователь не является ботом
+                        first_name="User"  # Имя пользователя (можно оставить пустым)
+                    ),
+                    text="/start"  # Текст команды
+                )
+                # Создаем объект Update
+                update = types.Update(
+                    update_id=1,  # Уникальный ID обновления (можно использовать временное значение)
+                    message=message  # Передаем созданное сообщение
+                )
+                # Вызываем обработчик команды /start
+                await dp.feed_update(bot, update)
+                # Отправляем сообщение с благодарностью и информацией об активации тарифа
+                thank_you_message = "❤️ Аврора благодарна за поддержку!\nУверены, функционал премиум-версии принесет пользу и создаст ваш шедевр.\nВаш тариф активирован."
+                await bot.send_message(chat_id=user_id, text=thank_you_message)
             return JSONResponse(
                 content={"status": "ignored", "message": "Автоплатеж не требует обработки."},
                 status_code=200
