@@ -363,7 +363,7 @@ async def activate(callback_query: types.CallbackQuery, state: FSMContext):
        
     ])
     keyboard1 = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Создать песню", callback_data="gen_mus")],
+        [InlineKeyboardButton(text="Создать песню", callback_data="generate_music")],
     ])
     current_state = await state.get_state()
     if current_state is not None:
@@ -510,6 +510,11 @@ async def process_genre(callback_query: types.CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="❤️Поддержать", callback_data="my_refs"),InlineKeyboardButton(text="Бесплатные токены", callback_data="free")],
         [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
     ])
+    back_keyboard1 = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❤️Поддержать", callback_data="my_refs"),InlineKeyboardButton(text="Бесплатные токены", callback_data="free")],
+        [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
+    ])
+    
 
     # Обрабатываем "Простой режим"
     if callback_query.data == "simple":
@@ -520,7 +525,7 @@ async def process_genre(callback_query: types.CallbackQuery, state: FSMContext):
         ])
 
         await state.update_data(mode="simple")
-        await state.set_state(MusicGeneration.waiting_for_lyrics)
+        # await state.set_state(MusicGeneration.waiting_for_lyrics)
         await callback_query.message.edit_text(
             '''✅Простой режим активирован. (1 токен = 2 песни).\n\n
 <b>Выберите один из двух доступных жанров.👇</b>''',
@@ -532,12 +537,12 @@ async def process_genre(callback_query: types.CallbackQuery, state: FSMContext):
     elif callback_query.data == "hard":
         if subsc:
             await state.update_data(mode="hard")
-            await state.set_state(MusicGeneration.waiting_for_lyrics)
+            # await state.set_state(MusicGeneration.waiting_for_lyrics)
             await callback_query.message.edit_text(
                 '''✅Мастер режим активирован. (1 токен = 2 песни).\n\n
 <b>👇Прямо в чат напишите 1 из 250 жанров (пример: рок, считалочка, русские частушки..)</b>''',
                 parse_mode=ParseMode.HTML,
-                reply_markup=back_keyboard
+                reply_markup=back_keyboard1
             )
         else:
             await callback_query.message.edit_text(
@@ -562,7 +567,7 @@ async def harde_mode(message: types.Message, state: FSMContext):
     )
 
 # Обработчик callback-запроса для выбора жанра
-@dp.callback_query(lambda query: query.data in ['rock', 'rap', 'pop'])
+@dp.callback_query(lambda query: query.data in ['rock', 'rap'])
 async def choice_lyric(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.answer()  # Подтверждаем получение callback
     # Создаем клавиатуру с кнопкой "Назад"
@@ -571,6 +576,7 @@ async def choice_lyric(callback_query: types.CallbackQuery, state: FSMContext):
     ])
     # Сохраняем выбранный жанр в состояние
     await state.update_data(genre=callback_query.data)
+    await state.set_state(MusicGeneration.waiting_for_lyrics)
     print(f"Установлено состояние: {await state.get_state()}")
     # Устанавливаем следующее состояние
     await state.set_state(MusicGeneration.waiting_for_lyrics_full)
@@ -1082,6 +1088,36 @@ async def any_message_handler(message: types.Message, state: FSMContext):
                 
                 # Отправляем сообщение с изображением и клавиатурой
                 await message.answer_photo(img_face, caption=face_message, reply_markup=sub_keyboard)   
+async def bot_monitoring(bot = bot, admin_channel_id = ADMIN_CHANNEL_ID, interval: int = 7200):
+    """
+    Функция для мониторинга бота. Каждый час отправляет сообщение в админ-канал.
+    
+    :param bot: Экземпляр бота.
+    :param admin_channel_id: ID админ-канала.
+    :param interval: Интервал отправки сообщений в секундах (по умолчанию 3600 секунд = 1 час).
+    """
+    while True:
+        try:
+            from datetime import datetime
+            # Получаем текущее время
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # Формируем сообщение для админ-канала
+            message = f"🔄 Бот работает исправно. Время: {current_time}"
+            
+            # Отправляем сообщение в админ-канал
+            await bot.send_message(admin_channel_id, message)
+            
+            # Логируем отправку сообщения
+            logging.info(f"Сообщение мониторинга отправлено в админ-канал: {message}")
+            
+            # Ждем указанный интервал перед следующей отправкой
+            await asyncio.sleep(interval)
+        
+        except Exception as e:
+            # Логируем ошибку, если что-то пошло не так
+            logging.error(f"Ошибка в функции мониторинга: {e}")
+            await asyncio.sleep(60)  # Ждем 1 минуту перед повторной попыткой
 
 async def daily_check():
     """Фоновая задача для ежедневной проверки."""
@@ -1124,6 +1160,7 @@ async def startup():
     # Запускаем фоновые задачи
     asyncio.create_task(daily_check())
     asyncio.create_task(renw_check())
+    asyncio.create_task(bot_monitoring())
     logging.info("Фоновые задачи запущены.")
 
     # Запускаем бота
