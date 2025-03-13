@@ -604,7 +604,7 @@ async def choice_lyric(callback_query: types.CallbackQuery, state: FSMContext):
 <b>👇отправьте слова песни👇</b>''', parse_mode=ParseMode.HTML, reply_markup=keyboard)
     print(f"Установлено состояние: {await state.get_state()}")
 
-@dp.message(state=MusicGeneration.waiting_for_genre)
+@dp.message(MusicGeneration.waiting_for_genre)
 async def process_hard_mode_genre(message: types.Message, state: FSMContext):
     # Получаем текст сообщения (жанр, введённый пользователем)
     genre = message.text.strip()
