@@ -1055,8 +1055,8 @@ async def support(callback_query: types.CallbackQuery):
 async def any_message_handler(message: types.Message, state: FSMContext):
     # Проверяем текущее состояние пользователя
     current_state = await state.get_state()
-    # Если состояние пользователя - waiting_for_genre, завершаем выполнение хэндлера
-    if current_state == "waiting_for_genre" or current_state == 'waiting_for_lyrics':
+    # Если состояние пользователя не равно None, завершаем выполнение хэндлера
+    if current_state is not None:
         return
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
