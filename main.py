@@ -525,6 +525,7 @@ async def process_genre(callback_query: types.CallbackQuery, state: FSMContext):
         ])
 
         await state.update_data(mode="simple")
+        await state.set_state(None)
         # await state.set_state(MusicGeneration.waiting_for_lyrics)
         await callback_query.message.edit_text(
             '''✅Простой режим активирован. (1 токен = 2 песни).\n\n
@@ -537,6 +538,7 @@ async def process_genre(callback_query: types.CallbackQuery, state: FSMContext):
     elif callback_query.data == "hard":
         if subsc:
             await state.update_data(mode="hard")
+            await state.set_state(None)
             # await state.set_state(MusicGeneration.waiting_for_lyrics)
             await callback_query.message.edit_text(
                 '''✅Мастер режим активирован. (1 токен = 2 песни).\n\n
