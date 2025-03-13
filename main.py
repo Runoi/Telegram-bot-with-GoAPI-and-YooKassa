@@ -62,6 +62,7 @@ class MusicGeneration(StatesGroup):
     waiting_for_generate = State() 
     waiting_for_confirmation = State()  
     buying = State()
+    simple = State()
 
 # @asynccontextmanager
 # async def lifespan(app: FastAPI):
@@ -534,7 +535,7 @@ async def process_genre(callback_query: types.CallbackQuery, state: FSMContext):
         ])
 
         await state.update_data(mode="simple")
-        await state.set_state(None)
+        await state.set_state(MusicGeneration.simple)
         # await state.set_state(MusicGeneration.waiting_for_lyrics)
         await callback_query.message.edit_text(
             '''✅Простой режим активирован. (1 токен = 2 песни).\n\n
@@ -547,7 +548,7 @@ async def process_genre(callback_query: types.CallbackQuery, state: FSMContext):
     elif callback_query.data == "hard":
         if subsc:
             await state.update_data(mode="hard")
-            await state.set_state(None)
+            await state.set_state(MusicGeneration.waiting_for_genre)
             # await state.set_state(MusicGeneration.waiting_for_lyrics)
             await callback_query.message.edit_text(
                 '''✅Мастер режим активирован. (1 токен = 2 песни).\n\n
@@ -586,7 +587,6 @@ async def choice_lyric(callback_query: types.CallbackQuery, state: FSMContext):
 
     # Сохраняем выбранный жанр в состояние
     await state.update_data(genre=selected_genre)
-    await state.set_state(MusicGeneration.waiting_for_lyrics)
     print(f"Установлено состояние: {await state.get_state()}")
 
     # Создаем клавиатуру с кнопкой "Назад"
@@ -603,6 +603,37 @@ async def choice_lyric(callback_query: types.CallbackQuery, state: FSMContext):
 А нейросеть сама его положит в такт музыки.\n\n
 <b>👇отправьте слова песни👇</b>''', parse_mode=ParseMode.HTML, reply_markup=keyboard)
     print(f"Установлено состояние: {await state.get_state()}")
+
+@dp.message(state=MusicGeneration.waiting_for_genre)
+async def process_hard_mode_genre(message: types.Message, state: FSMContext):
+    # Получаем текст сообщения (жанр, введённый пользователем)
+    genre = message.text.strip()
+
+    # Проверяем, что текст не пустой
+    if not genre:
+        await message.answer("❌ Пожалуйста, введите жанр.")
+        return
+
+    # Сохраняем выбранный жанр в состояние
+    await state.update_data(genre=genre)
+
+    # Переводим пользователя в следующее состояние (ожидание текста песни)
+    await state.set_state(MusicGeneration.waiting_for_lyrics_full)
+
+    # Клавиатура с кнопкой "Назад"
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
+    ])
+
+    # Отправляем сообщение с инструкцией
+    await message.answer(
+        '''✅Жанр выбран: <b>{}</b>\n\n
+Теперь отправьте текст песни (не более 3000 символов).
+А нейросеть сама его положит в такт музыки.\n\n
+<b>👇отправьте слова песни👇</b>'''.format(genre),
+        parse_mode=ParseMode.HTML,
+        reply_markup=keyboard
+    )
 
 @dp.message(MusicGeneration.waiting_for_lyrics)
 async def harde_mode(message: types.Message, state: FSMContext):    
