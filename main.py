@@ -224,6 +224,15 @@ async def handle_admin_commands(message: types.Message):
             duration_days = int(command_parts[3])
             await db.grant_subscription(user_id, sub_type, duration_days)
             await message.answer(f"✅ Пользователю {user_id} выдана подписка {sub_type} на {duration_days} дней.")
+
+            # Отправляем благодарственное сообщение пользователю
+            thank_you_message = (
+            "❤️ Аврора благодарна за поддержку!\n"
+            "Уверены, функционал премиум-версии принесет пользу и создаст ваш шедевр.\n"
+            "Ваш тариф активирован."
+        )
+            await bot.send_message(chat_id=user_id, text=thank_you_message)
+
         except ValueError:
             await message.answer("❌ Ошибка: неверный формат аргументов. <user_id> и <duration_days> должны быть числами.")
         except Exception as e:
@@ -511,7 +520,7 @@ async def process_genre(callback_query: types.CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
     ])
     back_keyboard1 = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❤️Поддержать", callback_data="my_refs"),InlineKeyboardButton(text="Бесплатные токены", callback_data="free")],
+        [InlineKeyboardButton(text="Бесплатные токены", callback_data="free")],
         [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
     ])
     
@@ -551,7 +560,49 @@ async def process_genre(callback_query: types.CallbackQuery, state: FSMContext):
                 '⭐️Режим мастер -  доступен с подпиской. Поддержите проект, либо получите бесплатные токены, которые мы выдаем всем хорошим людям.',
                 reply_markup=back_keyboard
             )
+# Обработчик callback-запроса для выбора жанра
+@dp.callback_query(lambda query: query.data in ['rock', 'rap'])
+async def choice_lyric(callback_query: types.CallbackQuery, state: FSMContext):
+    # Показываем зелёную галочку
+    await callback_query.answer()
 
+    # Получаем выбранный жанр
+    selected_genre = callback_query.data
+
+    # Обновляем клавиатуру, чтобы показать выбранный жанр с галочкой
+    updated_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Рок📀 ✅" if selected_genre == "rock" else "Рок📀", callback_data="rock"),
+         InlineKeyboardButton(text="Рэп💿 ✅" if selected_genre == "rap" else "Рэп💿", callback_data="rap")],
+        [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
+    ])
+
+    # Редактируем сообщение с обновлённой клавиатурой
+    await callback_query.message.edit_text(
+        '''✅Простой режим активирован. (1 токен = 2 песни).\n\n
+<b>Выберите один из двух доступных жанров.👇</b>''',
+        reply_markup=updated_keyboard,
+        parse_mode=ParseMode.HTML
+    )
+
+    # Сохраняем выбранный жанр в состояние
+    await state.update_data(genre=selected_genre)
+    await state.set_state(MusicGeneration.waiting_for_lyrics)
+    print(f"Установлено состояние: {await state.get_state()}")
+
+    # Создаем клавиатуру с кнопкой "Назад"
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
+    ])
+
+    # Устанавливаем следующее состояние
+    await state.set_state(MusicGeneration.waiting_for_lyrics_full)
+
+    # Отправляем сообщение с инструкцией
+    await callback_query.message.answer(
+        '''Песня почти готова, теперь просто отправьте текст (не более 3000 символов).
+А нейросеть сама его положит в такт музыки.\n\n
+<b>👇отправьте слова песни👇</b>''', parse_mode=ParseMode.HTML, reply_markup=keyboard)
+    print(f"Установлено состояние: {await state.get_state()}")
 
 @dp.message(MusicGeneration.waiting_for_lyrics)
 async def harde_mode(message: types.Message, state: FSMContext):    
@@ -568,27 +619,6 @@ async def harde_mode(message: types.Message, state: FSMContext):
 <b>👇отправьте слова песни👇</b>''', parse_mode= ParseMode.HTML, reply_markup= keyboard
     )
 
-# Обработчик callback-запроса для выбора жанра
-@dp.callback_query(lambda query: query.data in ['rock', 'rap'])
-async def choice_lyric(callback_query: types.CallbackQuery, state: FSMContext):
-    await callback_query.answer()  # Подтверждаем получение callback
-    # Создаем клавиатуру с кнопкой "Назад"
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
-    ])
-    # Сохраняем выбранный жанр в состояние
-    await state.update_data(genre=callback_query.data)
-    await state.set_state(MusicGeneration.waiting_for_lyrics)
-    print(f"Установлено состояние: {await state.get_state()}")
-    # Устанавливаем следующее состояние
-    await state.set_state(MusicGeneration.waiting_for_lyrics_full)
-
-    # Отправляем сообщение с инструкцией
-    await callback_query.message.answer(
-        '''Песня почти готова, теперь просто отправьте текст (не более 3000 символов).
-А нейросеть сама его положит в такт музыки.\n\n
-<b>👇отправьте слова песни👇</b>''', parse_mode= ParseMode.HTML,reply_markup= keyboard)
-    print(f"Установлено состояние: {await state.get_state()}")
 
 # Обработчик текстового сообщения (текст песни)
 @dp.message(MusicGeneration.waiting_for_lyrics_full)
@@ -1023,6 +1053,12 @@ async def support(callback_query: types.CallbackQuery):
 
 @dp.message()
 async def any_message_handler(message: types.Message, state: FSMContext):
+    # Проверяем текущее состояние пользователя
+    current_state = await state.get_state()
+    # Если состояние пользователя - waiting_for_genre, завершаем выполнение хэндлера
+    if current_state == "waiting_for_genre":
+        return
+    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎵Создать песню", callback_data="generate_music"),InlineKeyboardButton(text="💳Получить токены", callback_data="my_refs")],
         [InlineKeyboardButton(text="Другие нейросети", url='https://t.me/hassanmaxim/84'),InlineKeyboardButton(text="Инструкция и поддержка", web_app=WebAppInfo(url='https://teletype.in/@infopovod/avrora'))],
@@ -1270,6 +1306,9 @@ async def webhook_payments(request: Request):
             )
             # Вызываем обработчик команды /start
             await dp.feed_update(bot, update)
+            # Отправляем сообщение с благодарностью и информацией об активации тарифа
+            thank_you_message = "❤️ Аврора благодарна за поддержку!\nУверены, функционал премиум-версии принесет пользу и создаст ваш шедевр.\nВаш тариф активирован."
+            await bot.send_message(chat_id=user_id, text=thank_you_message)
             logger.info(f"Для пользователя {user_id} выполнена команда /start.")
 
         # Возвращаем результат обработки
