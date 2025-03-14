@@ -856,8 +856,11 @@ async def handle_music_generation(callback_query: types.CallbackQuery, state: FS
                     
                     await bot.send_message(ADMIN_CHANNEL_ID, f"🚨 Общая ошибка генерации музыки: API вернул ошибку")
                     #await activate(callback_query,state)
-                    user_id = callback_query.from_user.id
-                    if user_id:
+                    
+                # Отправляем сообщение с благодарностью и информацией об активации тарифа
+                    break
+                user_id = callback_query.from_user.id
+                if user_id:
 
                             # Создаем объект Message, имитирующий команду /start
                             message = types.Message(
@@ -881,8 +884,6 @@ async def handle_music_generation(callback_query: types.CallbackQuery, state: FS
                             )
                             # Вызываем обработчик команды /start
                             await dp.feed_update(bot, update)
-                # Отправляем сообщение с благодарностью и информацией об активации тарифа
-                    break
             # Обновляем баланс
             # balance = await get_balance(callback_query.from_user.id)
             # await callback_query.message.answer(f'Ваш баланс - {balance}. Желаете вернуться на главную или сгенерировать ещё раз?', reply_markup=keyboard)
