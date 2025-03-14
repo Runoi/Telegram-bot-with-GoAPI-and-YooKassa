@@ -768,7 +768,32 @@ async def handle_music_generation(callback_query: types.CallbackQuery, state: FS
             await callback_query.message.answer(
                 f'Не хватает токенов. Ваш баланс - {balance}. Возвращение в главное меню',
             )
-            await activate(callback_query,state)
+            #await activate(callback_query,state)
+            user_id = callback_query.from_user.id
+            if user_id:
+
+                            # Создаем объект Message, имитирующий команду /start
+                            message = types.Message(
+                                message_id=1,  # Уникальный ID сообщения (можно использовать временное значение)
+                                date=datetime.datetime.now(),  # Текущая дата и время
+                                chat=types.Chat(
+                                    id=int(user_id),  # ID чата пользователя
+                                    type="private"  # Тип чата (личный)
+                                ),
+                                from_user=types.User(
+                                    id=int(user_id),  # ID пользователя
+                                    is_bot=False,  # Пользователь не является ботом
+                                    first_name="User"  # Имя пользователя (можно оставить пустым)
+                                ),
+                                text="/start"  # Текст команды
+                            )
+                            # Создаем объект Update
+                            update = types.Update(
+                                update_id=1,  # Уникальный ID обновления (можно использовать временное значение)
+                                message=message  # Передаем созданное сообщение
+                            )
+                            # Вызываем обработчик команды /start
+                            await dp.feed_update(bot, update)
         else:
             await callback_query.answer()  # Подтверждаем получение callback
             await deduct_tokens(callback_query.from_user.id, 1)  # Списываем токен
@@ -830,12 +855,63 @@ async def handle_music_generation(callback_query: types.CallbackQuery, state: FS
                     await callback_query.message.answer('💜 Сейчас у нас очень много запросов.  Произошла ошибка, повторите ваш запрос позже, либо активируйте подписку для приоритетной очереди.')
                     
                     await bot.send_message(ADMIN_CHANNEL_ID, f"🚨 Общая ошибка генерации музыки: API вернул ошибку")
-                    await activate(callback_query,state)
+                    #await activate(callback_query,state)
+                    user_id = callback_query.from_user.id
+                    if user_id:
+
+                            # Создаем объект Message, имитирующий команду /start
+                            message = types.Message(
+                                message_id=1,  # Уникальный ID сообщения (можно использовать временное значение)
+                                date=datetime.datetime.now(),  # Текущая дата и время
+                                chat=types.Chat(
+                                    id=int(user_id),  # ID чата пользователя
+                                    type="private"  # Тип чата (личный)
+                                ),
+                                from_user=types.User(
+                                    id=int(user_id),  # ID пользователя
+                                    is_bot=False,  # Пользователь не является ботом
+                                    first_name="User"  # Имя пользователя (можно оставить пустым)
+                                ),
+                                text="/start"  # Текст команды
+                            )
+                            # Создаем объект Update
+                            update = types.Update(
+                                update_id=1,  # Уникальный ID обновления (можно использовать временное значение)
+                                message=message  # Передаем созданное сообщение
+                            )
+                            # Вызываем обработчик команды /start
+                            await dp.feed_update(bot, update)
+                # Отправляем сообщение с благодарностью и информацией об активации тарифа
                     break
             # Обновляем баланс
             # balance = await get_balance(callback_query.from_user.id)
             # await callback_query.message.answer(f'Ваш баланс - {balance}. Желаете вернуться на главную или сгенерировать ещё раз?', reply_markup=keyboard)
-            await activate(callback_query,state)
+            #await activate(callback_query,state)
+            user_id = callback_query.from_user.id
+            if user_id:
+
+                            # Создаем объект Message, имитирующий команду /start
+                            message = types.Message(
+                                message_id=1,  # Уникальный ID сообщения (можно использовать временное значение)
+                                date=datetime.datetime.now(),  # Текущая дата и время
+                                chat=types.Chat(
+                                    id=int(user_id),  # ID чата пользователя
+                                    type="private"  # Тип чата (личный)
+                                ),
+                                from_user=types.User(
+                                    id=int(user_id),  # ID пользователя
+                                    is_bot=False,  # Пользователь не является ботом
+                                    first_name="User"  # Имя пользователя (можно оставить пустым)
+                                ),
+                                text="/start"  # Текст команды
+                            )
+                            # Создаем объект Update
+                            update = types.Update(
+                                update_id=1,  # Уникальный ID обновления (можно использовать временное значение)
+                                message=message  # Передаем созданное сообщение
+                            )
+                            # Вызываем обработчик команды /start
+                            await dp.feed_update(bot, update)
 
 
     except Exception as e:
