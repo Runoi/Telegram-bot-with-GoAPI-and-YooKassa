@@ -5,16 +5,27 @@ import os
 import time
 import asyncio
 import aiofiles
+import logging
 
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,  # Уровень логирования (INFO, DEBUG, WARNING, ERROR, CRITICAL)
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Формат логов
+    handlers=[
+        logging.FileHandler('logs/bot.log',encoding='utf-8'),  # Логи записываются в файл bot.log
+        logging.StreamHandler()  # Логи также выводятся в консоль (опционально)
+    ]
+)
+logger = logging.getLogger(__name__)
 load_dotenv('keys.env')
 ai_token = os.getenv('AI_TOKEN')
-
+WEBHOOK = os.getenv('WEBHOOK_URL')
 headers = {'X-API-KEY': ai_token,'Content-Type': 'application/json' }
 url = "https://api.goapi.ai/api/v1/task"
 
 
             
-async def post_music(regime = 0,prompt="",tags = '', title = "Untitled"):
+async def post_music(user_id:int,regime = 0,prompt="",tags = '', title = "Untitled", webhook_endpoint=WEBHOOK):
     async with aiohttp.ClientSession() as session:
         if regime == 0:
             data = {
@@ -24,12 +35,13 @@ async def post_music(regime = 0,prompt="",tags = '', title = "Untitled"):
                     "prompt": prompt,
                     "lyrics_type": "generate",
                     "tags": tags,
+                    "title": f'{user_id}'
                     
                 },
                 "config": {
                         "service_mode": "public",
                         "webhook_config": {
-                            "endpoint": "",
+                            "endpoint": f'{webhook_endpoint}/music',
                             "secret": ""
                         }
                         }
@@ -42,24 +54,29 @@ async def post_music(regime = 0,prompt="",tags = '', title = "Untitled"):
                     "prompt": prompt,
                     "lyrics_type": "user",
                     "tags": tags,
-                    "seed": -1
+                    "metadata": {  # Добавляем user_id в метаданные
+                        "user_id": user_id
+                    }
                 },
                 "config": {
                         "service_mode": "public",
                         "webhook_config": {
-                            "endpoint": "",
+                            "endpoint": f'{webhook_endpoint}/music',
                             "secret": ""
                         }
                         }
             }
-        
-        async with session.post(url, json=data, headers=headers) as response:
-            if response.status == 200:
-                result = await response.json()
-                print('1')
-                return result
-            else:
-                print(f"Failed to post music: {response.status}")
+        try:
+            async with session.post(url, json=data, headers=headers) as response:
+                if response.status == 200:
+                        result = await response.json()
+                        logger.info(f"Задача создана: {result}")
+                        return result
+                else:
+                        logger.error(f"Ошибка при создании задачи: {response.status}")
+                        return None
+        except Exception as e:
+                logger.error(f"Исключение при запросе: {e}")
                 return None
 
 async def get_music(result, max_attempts=25):

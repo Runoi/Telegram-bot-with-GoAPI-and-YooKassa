@@ -64,24 +64,6 @@ class MusicGeneration(StatesGroup):
     buying = State()
     simple = State()
 
-# @asynccontextmanager
-# async def lifespan(app: FastAPI):
-#     """Настраиваем вебхук при запуске"""
-#     current_webhook = await bot.get_webhook_info()
-
-#     if current_webhook.url != WEBHOOK_URL:
-#         try:
-#             await bot.set_webhook(WEBHOOK_URL)
-#         except TelegramRetryAfter as e:
-#             await asyncio.sleep(e.retry_after)  # Ждём, сколько скажет Telegram
-#             await bot.set_webhook(WEBHOOK_URL)
-
-#     yield
-
-#     await bot.delete_webhook()
-
-# app = FastAPI(lifespan=lifespan)
-
 
 async def set_commands(bot: Bot):
     commands = [
@@ -755,169 +737,168 @@ async def handle_confirmation(callback_query: types.CallbackQuery, state: FSMCon
         await callback_query.message.answer("Возвращаемся к выбору жанра...")
         await state.set_state(MusicGeneration.waiting_for_genre)
 
+from aiogram import types
+import datetime
+
+            
 # Обработчик callback-запроса для генерации музыки
-@dp.callback_query(MusicGeneration.waiting_for_generate )
+@dp.callback_query(MusicGeneration.waiting_for_generate)
 async def handle_music_generation(callback_query: types.CallbackQuery, state: FSMContext):
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Вернуться на главную", callback_data="activate")],
-        [InlineKeyboardButton(text="Сгенерировать заново", callback_data="generate_music")]
-    ])
     try:
         balance = await get_balance(callback_query.from_user.id)
         if balance < 1:
             await callback_query.message.answer(
                 f'Не хватает токенов. Ваш баланс - {balance}. Возвращение в главное меню',
             )
-            #await activate(callback_query,state)
+            # Имитируем команду /start
             user_id = callback_query.from_user.id
             if user_id:
-
-                            # Создаем объект Message, имитирующий команду /start
-                            message = types.Message(
-                                message_id=1,  # Уникальный ID сообщения (можно использовать временное значение)
-                                date=datetime.datetime.now(),  # Текущая дата и время
-                                chat=types.Chat(
-                                    id=int(user_id),  # ID чата пользователя
-                                    type="private"  # Тип чата (личный)
-                                ),
-                                from_user=types.User(
-                                    id=int(user_id),  # ID пользователя
-                                    is_bot=False,  # Пользователь не является ботом
-                                    first_name="User"  # Имя пользователя (можно оставить пустым)
-                                ),
-                                text="/start"  # Текст команды
-                            )
-                            # Создаем объект Update
-                            update = types.Update(
-                                update_id=1,  # Уникальный ID обновления (можно использовать временное значение)
-                                message=message  # Передаем созданное сообщение
-                            )
-                            # Вызываем обработчик команды /start
-                            await dp.feed_update(bot, update)
+                message = types.Message(
+                    message_id=1,
+                    date=datetime.datetime.now(),
+                    chat=types.Chat(id=int(user_id)),
+                    from_user=types.User(id=int(user_id)),
+                    text="/start"
+                )
+                update = types.Update(update_id=1, message=message)
+                await dp.feed_update(bot, update)
         else:
             await callback_query.answer()  # Подтверждаем получение callback
             await deduct_tokens(callback_query.from_user.id, 1)  # Списываем токен
-            print('gener')
+
             await callback_query.message.answer('Генерация может занять до 800 сек. ⏳ Создаю мелодию, рифму, бит, голос, обложку.')
+
             # Получаем данные из состояния
             user_data = await state.get_data()
             genre = user_data['genre']
             lyrics = user_data['text']
-            #regime = user_data['regime']
-            max_retries=3
-            retry_delay=5
+
             # Завершаем состояние
-            #await state.clear()
+            await state.clear()
 
-            ret = 0
-            while ret < max_retries:
-                await asyncio.sleep(retry_delay)  # Задержка перед повтором
-                #Генерация музыки
-                #post = await aimu.post_music(0, lyrics, genre)
-                post = None
-                if post is not None:
-                    get = await aimu.get_music(post)
-                    await callback_query.message.answer("🎵 Генерация завершена!")
-                    for _,clip_data in get['data']['output']['clips'].items():
-                        # retries = 0
-                        
-                        # while retries < max_retries:
-                            try:
-                                out_img = URLInputFile(clip_data['image_url'])
-                                out_music = URLInputFile(clip_data['audio_url'])
-                                # Разбиваем текст на строки, удаляем пустые
-                                lines = [line.strip() for line in lyrics.split('\n') if line.strip()]
-
-                                # Если есть строки, выбираем случайную
-                                if lines:
-                                    first_string = random.choice(lines)
-                                else:
-                                    first_string = "Без названия"  # Если текст пуст, подставляем заглушку
-
-                                title = 'AuroraAI - ' + first_string
-                                await callback_query.message.answer_photo(out_img)
-                                await callback_query.message.answer_audio(out_music, title=title)
-
-                                break  # Если отправка успешна — выходим из цикла
-
-                            except Exception as e:
-                                retries += 1
-                                if retries < max_retries:
-                                    await asyncio.sleep(retry_delay)  # Ждем перед повторной попыткой
-                                    #await callback_query.message.answer(f"⚠ Ошибка при загрузке песни, пробую снова... ({retries}/{max_retries})")
-                                    await bot.send_message(ADMIN_CHANNEL_ID,f"🚨 Ошибка при отправке файла: {e}\nПесня  не может быть загружена Телеграмом.\n У пользователя @{callback_query.from_user.username}")
-                                else:
-                                    #await callback_query.message.answer(f"🚨 Ошибка при отправке файла: {e}\nПесня {clip_data['title']} не может быть загружена.")
-                                    await bot.send_message(ADMIN_CHANNEL_ID,f"🚨 Ошибка при отправке файла: {e}\nПесня  не может быть загружена Телеграмом.\n У пользователя @{callback_query.from_user.username}")
-                    #break
-                else:
-                    #ret += 1
-                    await callback_query.message.answer('💜 Сейчас у нас очень много запросов.  Произошла ошибка, повторите ваш запрос позже, либо активируйте подписку для приоритетной очереди.')
-                    
-                    await bot.send_message(ADMIN_CHANNEL_ID, f"🚨 Общая ошибка генерации музыки: API вернул ошибку")
-                    #await activate(callback_query,state)
-                    
-                # Отправляем сообщение с благодарностью и информацией об активации тарифа
-                    break
-                user_id = callback_query.from_user.id
-                if user_id:
-
-                            # Создаем объект Message, имитирующий команду /start
-                            message = types.Message(
-                                message_id=1,  # Уникальный ID сообщения (можно использовать временное значение)
-                                date=datetime.datetime.now(),  # Текущая дата и время
-                                chat=types.Chat(
-                                    id=int(user_id),  # ID чата пользователя
-                                    type="private"  # Тип чата (личный)
-                                ),
-                                from_user=types.User(
-                                    id=int(user_id),  # ID пользователя
-                                    is_bot=False,  # Пользователь не является ботом
-                                    first_name="User"  # Имя пользователя (можно оставить пустым)
-                                ),
-                                text="/start"  # Текст команды
-                            )
-                            # Создаем объект Update
-                            update = types.Update(
-                                update_id=1,  # Уникальный ID обновления (можно использовать временное значение)
-                                message=message  # Передаем созданное сообщение
-                            )
-                            # Вызываем обработчик команды /start
-                            await dp.feed_update(bot, update)
-            # Обновляем баланс
-            # balance = await get_balance(callback_query.from_user.id)
-            # await callback_query.message.answer(f'Ваш баланс - {balance}. Желаете вернуться на главную или сгенерировать ещё раз?', reply_markup=keyboard)
-            #await activate(callback_query,state)
-            user_id = callback_query.from_user.id
-            if user_id:
-
-                            # Создаем объект Message, имитирующий команду /start
-                            message = types.Message(
-                                message_id=1,  # Уникальный ID сообщения (можно использовать временное значение)
-                                date=datetime.datetime.now(),  # Текущая дата и время
-                                chat=types.Chat(
-                                    id=int(user_id),  # ID чата пользователя
-                                    type="private"  # Тип чата (личный)
-                                ),
-                                from_user=types.User(
-                                    id=int(user_id),  # ID пользователя
-                                    is_bot=False,  # Пользователь не является ботом
-                                    first_name="User"  # Имя пользователя (можно оставить пустым)
-                                ),
-                                text="/start"  # Текст команды
-                            )
-                            # Создаем объект Update
-                            update = types.Update(
-                                update_id=1,  # Уникальный ID обновления (можно использовать временное значение)
-                                message=message  # Передаем созданное сообщение
-                            )
-                            # Вызываем обработчик команды /start
-                            await dp.feed_update(bot, update)
-
+            
+            await aimu.post_music(user_id= callback_query.from_user.id, regime= 0, prompt= lyrics,tags= genre)
+            # Завершаем состояние
+            await state.clear()
 
     except Exception as e:
-        #await callback_query.message.answer(f"Произошла ошибка")
-        await bot.send_message(ADMIN_CHANNEL_ID,f"Произошла ошибка: {e}\n У пользователя @{callback_query.from_user.username} ({callback_query.from_user.id})")
+        await bot.send_message(
+            ADMIN_CHANNEL_ID,
+            f"Произошла ошибка: {e}\n У пользователя @{callback_query.from_user.username} ({callback_query.from_user.id})"
+        )
+
+
+
+async def process_music_task(task_id: str, status: str, output: dict, user_id: int,lyrics):
+    """
+    Обрабатывает задачу генерации музыки в фоновом режиме.
+    """
+    try:
+        if status == 'completed':
+            logger.info(f"Задача {task_id} завершена.")
+            await handle_completed_music_task(output, user_id,lyrics)
+        elif status == 'failed':
+            logger.error(f"Задача {task_id} завершена с ошибкой.")
+            await handle_failed_music_task(task_id, user_id)
+        else:
+            logger.info(f"Задача {task_id} имеет статус: {status}")
+    except Exception as e:
+        logger.error(f"Ошибка при обработке задачи {task_id}: {e}")
+
+async def handle_completed_music_task(output: dict, user_id: int, lyrics: str):
+    """
+    Обрабатывает завершённую задачу генерации музыки.
+    """
+    try:
+        # Проверяем, что lyrics является строкой
+        if not isinstance(lyrics, str):
+            lyrics = str(lyrics)  # Преобразуем в строку, если это не строка
+
+        # Отправляем результат пользователю
+        for _, clip_data in output.get('clips', {}).items():
+            out_img = types.URLInputFile(clip_data['image_url'])
+            out_music = types.URLInputFile(clip_data['audio_url'])
+
+            # Разбиваем текст на строки, удаляем пустые
+            lines = [line.strip() for line in lyrics.split('\n') if line.strip()]
+
+            # Если есть строки, выбираем случайную
+            if lines:
+                first_string = random.choice(lines)
+            else:
+                first_string = "Без названия"  # Если текст пуст, подставляем заглушку
+
+            title = 'AuroraAI - ' + first_string
+
+            await bot.send_photo(user_id, out_img)
+            await bot.send_audio(user_id, out_music, title=title)
+
+        # Логируем успешное завершение
+        logger.info(f"Результат задачи отправлен пользователю {user_id}.")
+
+        # Возвращаем пользователя на /start
+        await return_to_start(user_id)
+
+    except Exception as e:
+        logger.error(f"Ошибка при отправке результата пользователю {user_id}: {e}")
+        await bot.send_message(
+            chat_id=user_id,
+            text="🚨 Произошла ошибка при отправке результата. Пожалуйста, попробуйте ещё раз."
+        )
+
+async def return_to_start(user_id: int):
+    """
+    Имитирует команду /start для пользователя.
+    """
+    try:
+        # Создаем объект Message, имитирующий команду /start
+        message = types.Message(
+            message_id=1,  # Уникальный ID сообщения (можно использовать временное значение)
+            date=datetime.datetime.now(),  # Текущая дата и время
+            chat=types.Chat(
+                id=int(user_id),  # ID чата пользователя
+                type="private"  # Тип чата (личный)
+            ),
+            from_user=types.User(
+                id=int(user_id),  # ID пользователя
+                is_bot=False,  # Пользователь не является ботом
+                first_name="User"  # Имя пользователя (можно оставить пустым)
+            ),
+            text="/start"  # Текст команды
+        )
+
+        # Создаем объект Update
+        update = types.Update(
+            update_id=1,  # Уникальный ID обновления (можно использовать временное значение)
+            message=message  # Передаем созданное сообщение
+        )
+
+        # Вызываем обработчик команды /start
+        await dp.feed_update(bot, update)
+
+        logger.info(f"Пользователь {user_id} возвращён на /start.")
+
+    except Exception as e:
+        logger.error(f"Ошибка при возврате пользователя {user_id} на /start: {e}")
+        
+
+async def handle_failed_music_task(task_id: str, user_id: int):
+    """
+    Обрабатывает задачу, завершённую с ошибкой.
+    """
+    try:
+        # Отправляем сообщение об ошибке пользователю
+        await bot.send_message(
+            chat_id=user_id,
+            text="🚨 Произошла ошибка при генерации музыки. Пожалуйста, попробуйте ещё раз."
+        )
+        await bot.send_message(ADMIN_CHANNEL_ID,'🚨 Проишла ошибка при генерации музыки со стороны API')
+        await give_tokens(user_id,1)
+        await return_to_start(user_id)
+        logger.error(f"Задача {task_id} завершена с ошибкой для пользователя {user_id}.")
+
+    except Exception as e:
+        logger.error(f"Ошибка при отправке уведомления об ошибке пользователю {user_id}: {e}")
     
 @dp.message(Command('pay'))
 async def pay(message:types.Message,state: FSMContext):
@@ -1103,30 +1084,6 @@ async def handle_payment_webhook(data: dict, bot: Bot):
             content={"status": "error", "message": str(e)},
             status_code=500
         )
-# async def check_status_payment(user_id:int,payment_id:str, bot:Bot,sub_type:str,tokens:int,state:FSMContext, callback_query:types.CallbackQuery):
-#     from datetime import datetime
-#     now = datetime.now()
-#     expiry_date = (now + timedelta(days=30)).strftime('%Y-%m-%d')
-#     for _ in range(10):
-#             await asyncio.sleep(5)
-#             payment = await get_payment(payment_id)
-            
-#             if payment is False:
-#                 continue
-#             #print(type(payment))
-#             if payment or payment[0] == 'succeeded':
-                
-#                 if isinstance(payment, tuple):
-#                     await add_auto(user_id, payment[1])
-                
-#                 await get_subsc(expiry_date, sub_type, user_id)
-#                 await give_tokens(user_id, tokens)
-#                 await bot.send_message(ADMIN_CHANNEL_ID, f'Пользователь {user_id} оплатил подписку {sub_type} {"с автопродлением" if isinstance(payment, tuple) else "без автопродления"}')
-#                 await activate(callback_query, state)
-#                 break
-#     else:
-#             await bot.send_message(ADMIN_CHANNEL_ID,f"{callback_query.from_user.id} (@{callback_query.from_user.username}) отменил оплату")
-
 
 
 @dp.callback_query(lambda query: query.data == "sub_start")
@@ -1493,6 +1450,64 @@ async def webhook_payments(request: Request):
             content={"status": "error", "message": str(e)},
             status_code=500
         )
+    
+@app.post("/webhook/music")
+async def webhook_music(request: Request):
+    """
+    Обрабатывает входящие вебхуки от API генерации музыки.
+    """
+    try:
+        # Получаем данные из вебхука
+        data = await request.json()
+        logger.info(f"Получен вебхук: {data}")
+
+        # Проверяем, что данные содержат обязательные поля
+        if not data.get('timestamp') or not data.get('data'):
+            logger.error("Вебхук не содержит обязательных полей: 'timestamp' или 'data'")
+            raise HTTPException(status_code=400, detail="Invalid webhook data")
+
+        # Извлекаем данные задачи
+        task_data = data.get('data', {})
+        task_id = task_data.get('task_id')
+        status = task_data.get('status')
+        output = task_data.get('output', {})
+        user_id = int(task_data.get('input', {}).get('title',{}))  # Извлекаем user_id из метаданных
+        lyrics = task_data.get('input', {}).get('prompt',{}) 
+
+        if not task_id:
+            logger.error("Вебхук не содержит ID задачи.")
+            raise HTTPException(status_code=400, detail="Task ID is missing")
+
+        if not user_id:
+            logger.error("Вебхук не содержит user_id.")
+            raise HTTPException(status_code=400, detail="User ID is missing")
+
+        # Быстро отвечаем успешным статусом
+        response = JSONResponse(
+            content={"status": "success", "message": "Webhook received"},
+            status_code=200
+        )
+
+        # Обрабатываем задачу в фоновом режиме
+        asyncio.create_task(process_music_task(task_id, status, output, user_id,lyrics))
+
+        return response
+
+    except HTTPException as e:
+        logger.error(f"Ошибка в обработчике вебхуков: {e.detail}")
+        return JSONResponse(
+            content={"status": "error", "message": e.detail},
+            status_code=e.status_code
+        )
+
+    except Exception as e:
+        logger.error(f"Ошибка в обработчике вебхуков: {e}")
+        return JSONResponse(
+            content={"status": "error", "message": str(e)},
+            status_code=500
+        )    
+    
+
 # Запуск приложения
 if __name__ == '__main__':
     import uvicorn
