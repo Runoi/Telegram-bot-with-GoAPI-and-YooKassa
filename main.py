@@ -6,7 +6,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton,WebAppInfo,
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Update
+from aiogram.types import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.exceptions import TelegramRetryAfter
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, BackgroundTasks,HTTPException
@@ -46,7 +46,9 @@ load_dotenv('keys.env')
 bot_token = os.getenv('BOT_TOKEN')
 ADMIN_CHANNEL_ID = -1002337007587
 img_face = FSInputFile('face_image.jpg')
-exemple_music = FSInputFile('exemple.mp3',filename='Пример песни')
+img_gen = FSInputFile('gen_mus.webp')
+exemple_music = FSInputFile('exemple.mp4',filename='Пример песни')
+
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 
 bot = Bot(token=bot_token)
@@ -285,7 +287,7 @@ async def handle_admin_commands(message: types.Message):
 @dp.message(Command('start'))
 async def start(message: types.Message, state:FSMContext):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎵Создать песню", callback_data="generate_music"),InlineKeyboardButton(text="💳Получить токены", callback_data="my_refs")],
+        [InlineKeyboardButton(text="🎵Аврора нейросеть", callback_data="generate_music"),InlineKeyboardButton(text="💳Получить генерации", callback_data="my_refs")],
         [InlineKeyboardButton(text="Другие нейросети", url='https://t.me/hassanmaxim/84'),InlineKeyboardButton(text="Инструкция и поддержка", web_app=WebAppInfo(url='https://teletype.in/@infopovod/avrora'))],
         
     ])
@@ -329,7 +331,7 @@ async def start(message: types.Message, state:FSMContext):
                 if referrer_id:
                     await add_referal(referrer_id, user.id)  # Добавляем реферала 
 
-                await db.insert_table(user, referral_code, referrer_id, 2,1)
+                await db.insert_table(user, referral_code, referrer_id, 1,1)
                 
                 
 
@@ -344,13 +346,13 @@ async def start(message: types.Message, state:FSMContext):
             if status:
                 # Если пользователь не забанен, отправляем информацию о профиле
                 profile_message = (
-                    f"👤 Мой профиль\n\n"
-                    f"🆔 Telegram ID: <code>{message.from_user.id}</code>\n"
-                    f"🔓 Подписка: {plan_nadp}\n"
-                    f"🎬 Баланс: {round(await get_balance(message.from_user.id))} token🧾\n"
-                    f"⭐️ Пригласил: {len(await get_referal(message.from_user.id))}\n\n"
+                    f"📱 Управляйте мной кнопками меню👇🏻искусственный интеллект. \n\n"
+                    f"🔎 ID: <code>{message.from_user.id}</code>\n"
+                    f"1️⃣ Подписка: {plan_nadp}\n"
+                    f"2️⃣ Баланс: {round(await get_balance(message.from_user.id))} генераций🧾\n"
+                    f"3️⃣ Перешло по вашей ссылке: {len(await get_referal(message.from_user.id))}\n\n"
                     
-                    "Если нужна помощь - посмотрите справку или свяжитесь с администратором."
+                    "Используйте генерации для создания песен. Одна генерация = две песни."
                 )
                 await message.answer(profile_message, reply_markup=keyboard,parse_mode=ParseMode.HTML)
             else:
@@ -365,7 +367,7 @@ async def start(message: types.Message, state:FSMContext):
 
                 face_message = (
                     f"{message.from_user.first_name}, создавайте авторские песни и клипы с помощью искусственного интеллекта AVRORA 🌟\n\n"
-                    "По правилам телеграм для активации нейросети подпишитесь на сообщество автора и получите бесплатные токены."
+                    "По правилам телеграм для активации нейросети подпишитесь на сообщество автора и получите бесплатные генерации."
                 )
                 
                 # Отправляем сообщение с изображением и клавиатурой
@@ -377,12 +379,12 @@ async def start(message: types.Message, state:FSMContext):
 async def activate(callback_query: types.CallbackQuery, state: FSMContext):
     user = callback_query.from_user
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎵Создать песню", callback_data="generate_music"),InlineKeyboardButton(text="💳Получить токены", callback_data="my_refs")],
+        [InlineKeyboardButton(text="🎵Аврора нейросеть", callback_data="generate_music"),InlineKeyboardButton(text="💳Получить генерации", callback_data="my_refs")],
         [InlineKeyboardButton(text="Другие нейросети", url='https://t.me/hassanmaxim/84'),InlineKeyboardButton(text="Инструкция и поддержка", web_app=WebAppInfo(url='https://teletype.in/@infopovod/avrora'))],
        
     ])
     keyboard1 = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Создать песню", callback_data="generate_music")],
+        [InlineKeyboardButton(text="Аврора нейросеть", callback_data="generate_music")],
     ])
     current_state = await state.get_state()
     if current_state is not None:
@@ -416,7 +418,7 @@ async def activate(callback_query: types.CallbackQuery, state: FSMContext):
                 if referrer_id:
                     await add_referal(referrer_id, user.id)  
 
-                await db.insert_table(user, referral_code, referrer_id, 2,1)
+                await db.insert_table(user, referral_code, referrer_id, 1,1)
 
                 
 
@@ -426,50 +428,87 @@ async def activate(callback_query: types.CallbackQuery, state: FSMContext):
                 if referrer_id is not None:
                     ref_name = await check_ref(referrer_id)
                 await bot.send_message(ADMIN_CHANNEL_ID,f'✅Новая регистрация:\n Имя: {user.first_name}\n ID: {user.id} \n Username: @{user.username}\n Пригласил: {ref_name} \n Пользователей: {all_users}\n ')
+
             balance = await get_balance(user.id)
             status = await check_status(callback_query.from_user.id)
             if status:
-                if callback_query.message.photo and callback_query.message.caption:
-                    # Удаляем предыдущее сообщение
-                    await bot.delete_message(chat_id=callback_query.message.chat.id, message_id=callback_query.message.message_id)
+                # Проверяем, содержит ли сообщение фото и подпись
+                if callback_query.message.photo:
+                    # Проверяем, что подпись не равна 'Выберите один из доступных жанров'
+                    if callback_query.message.caption != 'Выберите один из доступных жанров':
+                        try:
+                            # Удаляем предыдущее сообщение
+                            await bot.delete_message(
+                                chat_id=callback_query.message.chat.id,
+                                message_id=callback_query.message.message_id
+                            )
+                        except Exception as e:
+                            print(f"Ошибка при удалении сообщения: {e}")
 
-                    # Отправляем первое сообщение с описанием и балансом
-                    await callback_query.message.answer(
-                        f'✅ Доступ открыт. Добро пожаловать!\n'
-                        f'Имя: {user.first_name}\n'
-                        f'▶️ Ваш баланс: {round(balance)} токена\n'
-                        f'🧾 А это значит = генерация {round(balance) * 2} песен.\n'
-                        'Я могу создать уникальную песню по вашему запросу, с вашим текстом и в любом жанре.\n'
-                        
-                        'Теперь больше не нужно платить тысячи и обращаться к специалистам. В 2 клика создавай инструментал, вокал и многое другое! В высоком качестве и по лучшей цене.\n\n'
-                        '<b>Вот коротенький пример моей песни👇</b>',
-                        reply_markup=keyboard1
-                    ,parse_mode= ParseMode.HTML)
-                    await callback_query.message.answer_audio(exemple_music)
+                        # Отправляем первое сообщение с описанием и балансом
+                        await callback_query.message.answer(
+                            f'✅ Доступ открыт. Добро пожаловать!\n'
+                            f'Имя: {user.first_name}\n'
+                            f'▶️ Ваш баланс: {round(balance)} генерация (вы можете создать две песни) \n'
+                            '''Я могу создать уникальную песню по вашему запросу, с вашим текстом, голосом и в любом жанре, чтобы далее опубликовать ее на стриминговых площадках и приносить доход.\n
 
-                    # # Отправляем второе сообщение с профилем пользователя
-                    # await callback_query.message.answer(
-                    #     f'👤 Мой профиль\n\n'
-                    #     f'🆔 Telegram ID: {callback_query.from_user.id}\n'
-                    #     f'🎬 Баланс: {await get_balance(callback_query.from_user.id)} token🧾\n'
-                    #     f'⭐️ Пригласил: {len(await get_referal(callback_query.from_user.id))}',
-                    #     reply_markup=keyboard
-                    # )
-                else:
-                    # Если нет изображения с описанием, отправляем только профиль
-                    await callback_query.message.edit_text(
-                        f'👤 Мой профиль\n\n'
-                        f'🆔 Telegram ID: <code>{callback_query.from_user.id}</code>\n'
-                        f"🔓 Подписка: {plan_nadp}\n"
-                        f'🎬 Баланс: {await get_balance(callback_query.from_user.id)} token🧾\n'
-                        f'⭐️ Пригласил: {len(await get_referal(callback_query.from_user.id))}\n\n'
-                        
-                        'Если нужна помощь - посмотрите справку или свяжитесь с администратором.',
-                        reply_markup=keyboard, parse_mode= ParseMode.HTML
+Не нужно платить сотни тысяч продюсерам!\n
+В 2 клика создавай инструментал, вокал и многое другое!\n\n
+
+Посмотри пример и создай свой шедевр 👇''',
+                            reply_markup=keyboard1,
+                            parse_mode=ParseMode.HTML
+                        )
+
+                        # Отправляем аудио с примером песни
+                        await callback_query.message.answer_video(exemple_music)
+                    else:
+                        try:
+                            # Удаляем предыдущее сообщение
+                            await bot.delete_message(
+                                chat_id=callback_query.message.chat.id,
+                                message_id=callback_query.message.message_id
+                            )
+                            profile_message = (
+                        f"📱 Управляйте мной кнопками меню👇🏻искусственный интеллект. \n\n"
+                        f"🔎 ID: <code>{callback_query.from_user.id}</code>\n"
+                        f"1️⃣ Подписка: {plan_nadp}\n"
+                        f"2️⃣ Баланс: {round(await get_balance(callback_query.from_user.id))} генераций🧾\n"
+                        f"3️⃣ Перешло по вашей ссылке: {len(await get_referal(callback_query.from_user.id))}\n\n"
+                        "Используйте генерации для создания песен. Одна генерация = две песни."
                     )
+                            await callback_query.message.answer(
+                            profile_message,
+                            reply_markup=keyboard,
+                            parse_mode=ParseMode.HTML
+                        )
+                        except Exception as e:
+                            print(f"Ошибка при удалении сообщения: {e}")
+
+                # Если сообщение содержит текст
+                elif callback_query.message.text:
+                    profile_message = (
+                        f"📱 Управляйте мной кнопками меню👇🏻искусственный интеллект. \n\n"
+                        f"🔎 ID: <code>{callback_query.from_user.id}</code>\n"
+                        f"1️⃣ Подписка: {plan_nadp}\n"
+                        f"2️⃣ Баланс: {round(await get_balance(callback_query.from_user.id))} генераций🧾\n"
+                        f"3️⃣ Перешло по вашей ссылке: {len(await get_referal(callback_query.from_user.id))}\n\n"
+                        "Используйте генерации для создания песен. Одна генерация = две песни."
+                    )
+
+                    # Редактируем текстовое сообщение
+                    try:
+                        await callback_query.message.edit_text(
+                            profile_message,
+                            reply_markup=keyboard,
+                            parse_mode=ParseMode.HTML
+                        )
+                    except Exception as e:
+                        print(f"Ошибка при редактировании сообщения: {e}")
+                
             else:
-                # Если статус False (пользователь забанен)
-                await callback_query.message.answer('Вы забанены!')
+                            # Если статус False (пользователь забанен)
+                    await callback_query.message.answer('Вы забанены!')
                         
 
     else:
@@ -480,184 +519,161 @@ async def activate(callback_query: types.CallbackQuery, state: FSMContext):
             ])
             face_message = f'''{callback_query.message.from_user.first_name}, создавайте авторские песни и клипы с помощью искусственного интеллекта AVRORA 🌟\n
 
-    По правилам телеграм для активации нейросети подпишитесь на сообщество автора и получите бесплатные токены.'''
+    По правилам телеграм для активации нейросети подпишитесь на сообщество автора и получите бесплатные генерации.'''
             await callback_query.message.answer_photo(img_face, caption= face_message, reply_markup= sub_keyboard)
     
 
     # Убираем "часики" на кнопке
     await callback_query.answer()
 
+# Список всех музыкальных жанров
+genres = [
+    "Поп", "Рэп", "Рок", "Эстрадное", "Частушки", "Считалочки", "Детские песни", "Колыбельные", "Шансон", "Хип-хоп",
+    "Электронная", "Джаз", "Блюз", "Классика", "Регги", "Поп-рок", "Фолк", "Метал", "Панк", "Инди", "Клубная музыка",
+    "Диско", "Соул", "Музыка для праздников", "Латино", "Техно", "Хоровая музыка", "Ретро", "Грустная музыка", "Мюзиклы",
+    "Афро-бит", "Даунтемпо", "Транс", "Лоу-фай", "Кантри", "Рэггетон", "Романсы", "Акустическая", "Дети поют", "Музыка для медитации",
+    "Фанк", "Светская музыка", "Инструментальная", "Спектакли", "Передачи с музыкой", "Хипстерская", "Уличная музыка", "Песни о любви",
+    "Сказки для детей", "Электро"
+]
+
+# Количество жанров на одной странице
+ITEMS_PER_PAGE = 16
+
+# Уровни подписки
+SUBSCRIPTION_LEVELS = {
+    "no_subscription": ["Поп", "Рэп", "Рок",],  # Без подписки — нет доступных жанров
+    "start": ["Поп", "Рэп", "Рок", "Эстрадное", "Детские песни", "Колыбельные"],  # Стартовая подписка
+    "master": genres[:20],  # Мастер-подписка — первые 20 жанров
+    "year": genres  # Годовая подписка — все жанры
+    }
+
+async def create_keyboard(user_id: int, page: int = 0, selected_genre: str = None):
+    # Создаем клавиатуру с пустым списком кнопок
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+
+    # Определяем доступные жанры для уровня подписки
+    plan = await check_plan(user_id)
+    available_genres = SUBSCRIPTION_LEVELS.get(plan[0], [])
+    print(available_genres)
+
+    # Добавляем кнопки с жанрами по 4 в ряд
+    start = page * ITEMS_PER_PAGE
+    end = start + ITEMS_PER_PAGE
+    genres_to_display = genres[start:end]
+
+    # Группируем кнопки по 4 в ряд
+    row = []
+    for genre in genres_to_display:
+        if genre in available_genres:
+            # Если жанр доступен, добавляем активную кнопку
+            button_text = f"✅{genre} " if genre == selected_genre else genre
+            
+            row.append(InlineKeyboardButton(text=button_text, callback_data=f"genre_{genre}"))
+        else:
+            # Если жанр недоступен, добавляем отключенную кнопку
+            row.append(InlineKeyboardButton(text=f'🔒{genre}', callback_data=f"genre_{genre}", disabled=True))
+
+        # Если в ряду 4 кнопки, добавляем его в клавиатуру и начинаем новый ряд
+        if len(row) == 3:
+            keyboard.inline_keyboard.append(row)
+            row = []
+
+    # Если остались кнопки, которые не вошли в последний ряд, добавляем их
+    if row:
+        keyboard.inline_keyboard.append(row)
+
+    # Кнопки пагинации
+    pagination_buttons = []
+    if page > 0:
+        pagination_buttons.append(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"page_{page - 1}"))
+    if end < len(genres):
+        pagination_buttons.append(InlineKeyboardButton(text="Вперед ➡️", callback_data=f"page_{page + 1}"))
+
+    # Добавляем кнопки пагинации как один ряд
+    if pagination_buttons:
+        keyboard.inline_keyboard.append(pagination_buttons)
+
+    # Кнопка "Назад"
+    keyboard.inline_keyboard.append([InlineKeyboardButton(text="🔙Главное меню", callback_data="activate")])
+
+    return keyboard
+
+# Обработчик для пагинации
+@dp.callback_query(lambda query: query.data.startswith("page_"))
+async def handle_pagination(callback_query: types.CallbackQuery):
+    page = int(callback_query.data.split("_")[1])
+
+    await callback_query.message.edit_caption(
+        caption="Выберите один из доступных жанров",
+        reply_markup=await create_keyboard(callback_query.from_user.id, page=page)
+    )
+
+    await callback_query.answer()
+
 @dp.callback_query(lambda query: query.data == "generate_music")
 async def generate_music(callback_query: types.CallbackQuery, state: FSMContext):
     status = await check_status(callback_query.from_user.id)
     if status:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="1️⃣Простой режим❤️", callback_data="simple"), InlineKeyboardButton(text="2️⃣ Режим мастера⭐️", callback_data="hard")],
-            [InlineKeyboardButton(text="📚Инструкция", web_app=WebAppInfo(url="https://teletype.in/@infopovod/avrora"))],
-            [InlineKeyboardButton(text="🔙Назад", callback_data="activate")]
-        ])
-        await callback_query.answer("Выберите режим")  # Подтверждаем получение callback
+        # Удаляем предыдущее сообщение
+        await bot.delete_message(
+                                chat_id=callback_query.message.chat.id,
+                                message_id=callback_query.message.message_id
+                            )
         # Устанавливаем состояние "waiting_for_genre"
         await state.set_state(MusicGeneration.waiting_for_genre)
-        await callback_query.message.edit_text(
-            '''<b>Выберите необходимый раздел:</b>\n
-
-1️⃣Простой режим❤️ (бесплатный)\n
-2️⃣ Режим мастера⭐️ (доступно с подпиской)\n
-
-🎸 AVRORA – лучшая нейросеть для создания красивых трендовых песен.
-Всего в 2 клика: музыка, ритм, голос, исполнение.
-''', reply_markup=keyboard, parse_mode=ParseMode.HTML, disable_web_page_preview= True
+        await callback_query.message.answer_photo(img_gen,
+           caption = '''Выберите один из доступных жанров
+''', reply_markup= await create_keyboard(callback_query.from_user.id), parse_mode=ParseMode.HTML, disable_web_page_preview= True
         )
     else:
         await callback_query.message.edit_text('Вы забанены!')
 
-@dp.callback_query(lambda query: query.data in ["simple", "hard"])
-async def process_genre(callback_query: types.CallbackQuery, state: FSMContext):
-    current_state = await state.get_state()
-    if current_state is not None:
-        await state.clear()  # Сбрасываем состояние
-
-    # Подтверждаем обработку callback-запроса
-    await callback_query.answer()
-
-    # Проверяем подписку заранее
-    subsc = await check_subsc(callback_query.from_user.id)
-
-    # Клавиатура "Назад"
-    back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❤️Поддержать", callback_data="my_refs"),InlineKeyboardButton(text="Бесплатные токены", callback_data="free")],
-        [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
-    ])
-    back_keyboard1 = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Бесплатные токены", callback_data="free")],
-        [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
-    ])
-    
-
-    # Обрабатываем "Простой режим"
-    if callback_query.data == "simple":
-        genre_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="Рок📀", callback_data="rock"),
-             InlineKeyboardButton(text="Рэп💿", callback_data="rap")], 
-            [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
-        ])
-
-        await state.update_data(mode="simple")
-        await state.set_state(MusicGeneration.simple)
-        # await state.set_state(MusicGeneration.waiting_for_lyrics)
-        await callback_query.message.edit_text(
-            '''✅Простой режим активирован. (1 токен = 2 песни).\n\n
-<b>Выберите один из двух доступных жанров.👇</b>''',
-            reply_markup=genre_keyboard,
-            parse_mode=ParseMode.HTML
-        )
-
-    # Обрабатываем "Мастер режим"
-    elif callback_query.data == "hard":
-        if subsc:
-            await state.update_data(mode="hard")
-            await state.set_state(MusicGeneration.waiting_for_genre)
-            # await state.set_state(MusicGeneration.waiting_for_lyrics)
-            await callback_query.message.edit_text(
-                '''✅Мастер режим активирован. (1 токен = 2 песни).\n\n
-<b>👇Прямо в чат напишите 1 из 250 жанров (пример: рок, считалочка, русские частушки..)</b>''',
-                parse_mode=ParseMode.HTML,
-                reply_markup=back_keyboard1
-            )
-        else:
-            await callback_query.message.edit_text(
-                '⭐️Режим мастер -  доступен с подпиской. Поддержите проект, либо получите бесплатные токены, которые мы выдаем всем хорошим людям.',
-                reply_markup=back_keyboard
-            )
 # Обработчик callback-запроса для выбора жанра
-@dp.callback_query(lambda query: query.data in ['rock', 'rap'])
-async def choice_lyric(callback_query: types.CallbackQuery, state: FSMContext):
+@dp.callback_query(lambda query: query.data.startswith('genre_'))
+async def choice_genre(callback_query: types.CallbackQuery, state: FSMContext):
+    user_id = callback_query.from_user.id
+    user_subscription = await check_plan(user_id)
+    print(user_subscription)
+    # Получаем выбранный жанр
+    selected_genre = callback_query.data.split('_', 1)[1]
+
+    # Проверяем, доступен ли жанр для текущей подписки
+    available_genres = SUBSCRIPTION_LEVELS.get(user_subscription[0], [])
+    if selected_genre not in available_genres:
+        await callback_query.answer("❌ Этот жанр недоступен для вашей подписки.", show_alert=True)
+        return
+
     # Показываем зелёную галочку
     await callback_query.answer()
 
-    # Получаем выбранный жанр
-    selected_genre = callback_query.data
+    # Сохраняем выбранный жанр в состояние
+    await state.update_data(genre=selected_genre)
+    print(f"Выбран жанр: {selected_genre}")
 
-    # Обновляем клавиатуру, чтобы показать выбранный жанр с галочкой
-    updated_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Рок📀 ✅" if selected_genre == "rock" else "Рок📀", callback_data="rock"),
-         InlineKeyboardButton(text="Рэп💿 ✅" if selected_genre == "rap" else "Рэп💿", callback_data="rap")],
-        [InlineKeyboardButton(text="🔙Назад", callback_data="simple")]
-    ])
+    # Обновляем клавиатуру с учётом выбранного жанра
+    updated_keyboard = await create_keyboard(user_id, selected_genre=selected_genre)
 
     # Редактируем сообщение с обновлённой клавиатурой
-    await callback_query.message.edit_text(
-        '''✅Простой режим активирован. (1 токен = 2 песни).\n\n
-<b>Выберите один из двух доступных жанров.👇</b>''',
+    await callback_query.message.edit_caption(
+       caption= '''✅Простой режим активирован. (1 токен = 2 песни).\n\n
+<b>Выберите один из доступных жанров.👇</b>''',
         reply_markup=updated_keyboard,
         parse_mode=ParseMode.HTML
     )
 
-    # Сохраняем выбранный жанр в состояние
-    await state.update_data(genre=selected_genre)
+    # Устанавливаем следующее состояние
+    await state.set_state(MusicGeneration.waiting_for_lyrics_full)
     print(f"Установлено состояние: {await state.get_state()}")
 
-    # Создаем клавиатуру с кнопкой "Назад"
+    # Отправляем сообщение с инструкцией
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
     ])
-
-    # Устанавливаем следующее состояние
-    await state.set_state(MusicGeneration.waiting_for_lyrics_full)
-
-    # Отправляем сообщение с инструкцией
     await callback_query.message.answer(
         '''Песня почти готова, теперь просто отправьте текст (не более 3000 символов).
 А нейросеть сама его положит в такт музыки.\n\n
 <b>👇отправьте слова песни👇</b>''', parse_mode=ParseMode.HTML, reply_markup=keyboard)
     print(f"Установлено состояние: {await state.get_state()}")
-
-@dp.message(MusicGeneration.waiting_for_genre)
-async def process_hard_mode_genre(message: types.Message, state: FSMContext):
-    # Получаем текст сообщения (жанр, введённый пользователем)
-    genre = message.text.strip()
-
-    # Проверяем, что текст не пустой
-    if not genre:
-        await message.answer("❌ Пожалуйста, введите жанр.")
-        return
-
-    # Сохраняем выбранный жанр в состояние
-    await state.update_data(genre=genre)
-
-    # Переводим пользователя в следующее состояние (ожидание текста песни)
-    await state.set_state(MusicGeneration.waiting_for_lyrics_full)
-
-    # Клавиатура с кнопкой "Назад"
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙Назад", callback_data="hard")]
-    ])
-
-    # Отправляем сообщение с инструкцией
-    await message.answer(
-        '''✅Жанр выбран: <b>{}</b>\n\n
-Теперь отправьте текст песни (не более 3000 символов).
-А нейросеть сама его положит в такт музыки.\n\n
-<b>👇отправьте слова песни👇</b>'''.format(genre),
-        parse_mode=ParseMode.HTML,
-        reply_markup=keyboard
-    )
-
-@dp.message(MusicGeneration.waiting_for_lyrics)
-async def harde_mode(message: types.Message, state: FSMContext):    
-    await state.update_data(genre= message.text)
-    await state.set_state(MusicGeneration.waiting_for_lyrics_full)
-    # Создаем клавиатуру с кнопкой "Назад"
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙Назад", callback_data="simple")]
-    ])
-    
-    await message.answer(
-        '''Песня почти готова, теперь просто отправьте текст (не более 3000 символов).
-А нейросеть сама его положит в такт музыки.\n\n
-<b>👇отправьте слова песни👇</b>''', parse_mode= ParseMode.HTML, reply_markup= keyboard
-    )
 
 
 # Обработчик текстового сообщения (текст песни)
@@ -739,7 +755,40 @@ async def handle_confirmation(callback_query: types.CallbackQuery, state: FSMCon
 
 from aiogram import types
 import datetime
+async def return_to_start(user_id: int):
+    """
+    Имитирует команду /start для пользователя.
+    """
+    try:
+        # Создаем объект Message, имитирующий команду /start
+        message = types.Message(
+            message_id=1,  # Уникальный ID сообщения (можно использовать временное значение)
+            date=datetime.datetime.now(),  # Текущая дата и время
+            chat=types.Chat(
+                id=int(user_id),  # ID чата пользователя
+                type="private"  # Тип чата (личный)
+            ),
+            from_user=types.User(
+                id=int(user_id),  # ID пользователя
+                is_bot=False,  # Пользователь не является ботом
+                first_name="User"  # Имя пользователя (можно оставить пустым)
+            ),
+            text="/start"  # Текст команды
+        )
 
+        # Создаем объект Update
+        update = types.Update(
+            update_id=1,  # Уникальный ID обновления (можно использовать временное значение)
+            message=message  # Передаем созданное сообщение
+        )
+
+        # Вызываем обработчик команды /start
+        await dp.feed_update(bot, update)
+
+        logger.info(f"Пользователь {user_id} возвращён на /start.")
+
+    except Exception as e:
+        logger.error(f"Ошибка при возврате пользователя {user_id} на /start: {e}")
             
 # Обработчик callback-запроса для генерации музыки
 @dp.callback_query(MusicGeneration.waiting_for_generate)
@@ -752,16 +801,7 @@ async def handle_music_generation(callback_query: types.CallbackQuery, state: FS
             )
             # Имитируем команду /start
             user_id = callback_query.from_user.id
-            if user_id:
-                message = types.Message(
-                    message_id=1,
-                    date=datetime.datetime.now(),
-                    chat=types.Chat(id=int(user_id)),
-                    from_user=types.User(id=int(user_id)),
-                    text="/start"
-                )
-                update = types.Update(update_id=1, message=message)
-                await dp.feed_update(bot, update)
+            await return_to_start(user_id)
         else:
             await callback_query.answer()  # Подтверждаем получение callback
             await deduct_tokens(callback_query.from_user.id, 1)  # Списываем токен
@@ -773,14 +813,12 @@ async def handle_music_generation(callback_query: types.CallbackQuery, state: FS
             genre = user_data['genre']
             lyrics = user_data['text']
 
-            # Завершаем состояние
-            await state.clear()
+           
 
             
             await aimu.post_music(user_id= callback_query.from_user.id, regime= 0, prompt= lyrics,tags= genre)
-            # Завершаем состояние
+            
             await state.clear()
-
     except Exception as e:
         await bot.send_message(
             ADMIN_CHANNEL_ID,
@@ -828,10 +866,11 @@ async def handle_completed_music_task(output: dict, user_id: int, lyrics: str):
             else:
                 first_string = "Без названия"  # Если текст пуст, подставляем заглушку
 
-            title = 'AuroraAI - ' + first_string
+            title = '@avroraai_bot - ' + first_string
 
             await bot.send_photo(user_id, out_img)
             await bot.send_audio(user_id, out_music, title=title)
+            await bot.send_message(user_id,'Если результат не точный - обязательно посмотри инструкции, 99% это решит запрос, я умею всё, просто правильно используй!')
 
         # Логируем успешное завершение
         logger.info(f"Результат задачи отправлен пользователю {user_id}.")
@@ -846,40 +885,6 @@ async def handle_completed_music_task(output: dict, user_id: int, lyrics: str):
             text="🚨 Произошла ошибка при отправке результата. Пожалуйста, попробуйте ещё раз."
         )
 
-async def return_to_start(user_id: int):
-    """
-    Имитирует команду /start для пользователя.
-    """
-    try:
-        # Создаем объект Message, имитирующий команду /start
-        message = types.Message(
-            message_id=1,  # Уникальный ID сообщения (можно использовать временное значение)
-            date=datetime.datetime.now(),  # Текущая дата и время
-            chat=types.Chat(
-                id=int(user_id),  # ID чата пользователя
-                type="private"  # Тип чата (личный)
-            ),
-            from_user=types.User(
-                id=int(user_id),  # ID пользователя
-                is_bot=False,  # Пользователь не является ботом
-                first_name="User"  # Имя пользователя (можно оставить пустым)
-            ),
-            text="/start"  # Текст команды
-        )
-
-        # Создаем объект Update
-        update = types.Update(
-            update_id=1,  # Уникальный ID обновления (можно использовать временное значение)
-            message=message  # Передаем созданное сообщение
-        )
-
-        # Вызываем обработчик команды /start
-        await dp.feed_update(bot, update)
-
-        logger.info(f"Пользователь {user_id} возвращён на /start.")
-
-    except Exception as e:
-        logger.error(f"Ошибка при возврате пользователя {user_id} на /start: {e}")
         
 
 async def handle_failed_music_task(task_id: str, user_id: int):
@@ -892,7 +897,8 @@ async def handle_failed_music_task(task_id: str, user_id: int):
             chat_id=user_id,
             text="🚨 Произошла ошибка при генерации музыки. Пожалуйста, попробуйте ещё раз."
         )
-        await bot.send_message(ADMIN_CHANNEL_ID,'🚨 Проишла ошибка при генерации музыки со стороны API')
+        await bot.send_message(ADMIN_CHANNEL_ID,'''🚨 Упс. Сейчас у нас много запросов. Произошла ошибка при генерации музыки.
+Измените ваш текст и попробуйте еще раз.  А так же, можете активировать подписку для приоритетной очереди.''')
         await give_tokens(user_id,1)
         await return_to_start(user_id)
         logger.error(f"Задача {task_id} завершена с ошибкой для пользователя {user_id}.")
@@ -907,23 +913,25 @@ async def pay(message:types.Message,state: FSMContext):
             await state.clear()
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🌘Старт", callback_data="sub_start"),
-         InlineKeyboardButton(text="🌗Мастер", callback_data="sub_master"),
+         InlineKeyboardButton(text="🌗Творец", callback_data="sub_master"),
         ],
-        [InlineKeyboardButton(text="🌕Годовая", callback_data="sub_year"),
-         InlineKeyboardButton(text="Бесплатные токены", callback_data="free")],
+        [InlineKeyboardButton(text="🌕Звезда", callback_data="sub_year"),
+         InlineKeyboardButton(text="❤️Бесплатные генерации", callback_data="free")],
         [InlineKeyboardButton(text="Отменить продление", url="https://t.me/dropsupport")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="activate")]
     ])
     mess = (
             f'''Создавайте легко свои песни и публикуйте их на всех площадках, зарабатывая за прослушивания!\n
 <b>ТАРИФЫ:</b>\n
-🌘 Старт - 20 токенов (40 песен) в месяц - 350₽ /мес\n
-🌗 Мастер - 60 токенов (120 песен) в месяц - 700₽ /мес\n
-🌕 Годовой - всё из тарифа «Мастер» на целый год с выгодой 50%. - 5400₽ /мес\n
+🌘 Старт - 10 генераций (2 жанра) - 350₽/мес \n
+
+🌗 Творец- 30 генераций (35 жанров) - 990₽/мес \n
+
+🌕 Звезда - 30 генераций (250 жанров) - 5900₽/мес \n
 
 ✅Оплачивайте через официальные платежные с-мы безопасно. Нам доверяю: Paypal, Sber, Yandex money, СБП, Vk pay и другие.\n
 
-{message.from_user.first_name}, вы можете поддержать наш социальный проект который мы развиваем полностью на свои средства, либо использовать бесплатные токены что мы дарим каждый день всем хорошим людям.\n
+{message.from_user.first_name}, вы можете поддержать наш социальный проект который мы развиваем полностью на свои средства, либо использовать бесплатные генерации что мы дарим каждый день всем хорошим людям.\n
 
 <b>Выберите тариф ниже👇🏽</b>'''
         )
@@ -937,23 +945,25 @@ async def get_sub(callback_query: types.CallbackQuery,state: FSMContext):
             await state.clear() 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🌘Старт", callback_data="sub_start"),
-         InlineKeyboardButton(text="🌗Мастер", callback_data="sub_master"),
+         InlineKeyboardButton(text="🌗Творец", callback_data="sub_master"),
         ],
-        [InlineKeyboardButton(text="🌕Годовая", callback_data="sub_year"),
-         InlineKeyboardButton(text="Бесплатные токены", callback_data="free")],
+        [InlineKeyboardButton(text="🌕Звезда", callback_data="sub_year"),
+         InlineKeyboardButton(text="❤️Бесплатные генерации", callback_data="free")],
         [InlineKeyboardButton(text="Отменить продление", url="https://t.me/dropsupport")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="activate")]
     ])
     mess = (
             f'''Создавайте легко свои песни и публикуйте их на всех площадках, зарабатывая за прослушивания!\n
 <b>ТАРИФЫ:</b>\n
-🌘 Старт - 20 токенов (40 песен) в месяц - 350₽ /мес\n
-🌗 Мастер - 60 токенов (120 песен) в месяц - 700₽ /мес\n
-🌕 Годовой - всё из тарифа «Мастер» на целый год с выгодой 50%. - 5400₽ /мес\n
+🌘 Старт - 10 генераций (2 жанра) - 350₽/мес \n
+
+🌗 Творец- 30 генераций (35 жанров) - 990₽/мес \n
+
+🌕 Звезда - 30 генераций (250 жанров) - 5900₽/мес \n
 
 ✅Оплачивайте через официальные платежные с-мы безопасно. Нам доверяю: Paypal, Sber, Yandex money, СБП, Vk pay и другие.\n
 
-{callback_query.from_user.first_name}, вы можете поддержать наш социальный проект который мы развиваем полностью на свои средства, либо использовать бесплатные токены что мы дарим каждый день всем хорошим людям.\n
+{callback_query.from_user.first_name}, вы можете поддержать наш социальный проект который мы развиваем полностью на свои средства, либо использовать бесплатные генерации что мы дарим каждый день всем хорошим людям.\n
 
 <b>Выберите тариф ниже👇🏽</b>'''
         )
@@ -1067,7 +1077,7 @@ async def handle_payment_webhook(data: dict, bot: Bot):
             # Уведомляем администратора
             await bot.send_message(
                 ADMIN_CHANNEL_ID,
-                f'Пользователь {user_id}(@{username}) оплатил подписку {sub_type}. Токенов начислено: {tokens}'
+                f'Пользователь {user_id}(@{username}) оплатил подписку {sub_type}. Генераций начислено: {tokens}'
             )
 
             return JSONResponse(content={"status": "ok"})
@@ -1118,7 +1128,7 @@ async def get_free(callback_query: types.CallbackQuery):
 
     ref_url = await generate_referral_link(username, ref)
     mess = f'''{callback_query.from_user.first_name}, расскажите о нас своим коллегам.\n
-📍За каждого приглашенного - 1 токен (2 песни).\n
+📍За каждого приглашенного - 1 генерацию (2 песни).\n
 
 Ваша ссылка для приглашения (скопируйте и отправьте её коллегам или в чаты):\n
 {ref_url}
@@ -1152,7 +1162,7 @@ async def any_message_handler(message: types.Message, state: FSMContext):
         return
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎵Создать песню", callback_data="generate_music"),InlineKeyboardButton(text="💳Получить токены", callback_data="my_refs")],
+        [InlineKeyboardButton(text="🎵Аврора нейросеть", callback_data="generate_music"),InlineKeyboardButton(text="💳Получить генерации", callback_data="my_refs")],
         [InlineKeyboardButton(text="Другие нейросети", url='https://t.me/hassanmaxim/84'),InlineKeyboardButton(text="Инструкция и поддержка", web_app=WebAppInfo(url='https://teletype.in/@infopovod/avrora'))],
         
     ])
@@ -1192,13 +1202,13 @@ async def any_message_handler(message: types.Message, state: FSMContext):
             if status:
                 # Если пользователь не забанен, отправляем информацию о профиле
                 profile_message = (
-                    f"👤 Мой профиль\n\n"
-                    f"🆔 Telegram ID: <code>{message.from_user.id}</code>\n"
-                    f"🔓 Подписка: {plan_nadp}\n"
-                    f"🎬 Баланс: {round(await get_balance(message.from_user.id))} token🧾\n"
-                    f"⭐️ Пригласил: {len(await get_referal(message.from_user.id))}\n"
+                    f"📱 Управляйте мной кнопками меню👇🏻искусственный интеллект. \n\n"
+                    f"🔎 ID: <code>{message.from_user.id}</code>\n"
+                    f"1️⃣ Подписка: {plan_nadp}\n"
+                    f"2️⃣ Баланс: {round(await get_balance(message.from_user.id))} генераций🧾\n"
+                    f"3️⃣ Перешло по вашей ссылке: {len(await get_referal(message.from_user.id))}\n\n"
                     
-                    "Если нужна помощь - посмотрите справку или свяжитесь с администратором."
+                    "Используйте генерации для создания песен. Одна генерация = две песни."
                 )
                 await message.answer(profile_message, reply_markup=keyboard,parse_mode=ParseMode.HTML)
             else:
@@ -1213,7 +1223,7 @@ async def any_message_handler(message: types.Message, state: FSMContext):
 
                 face_message = (
                     f"{message.from_user.first_name}, создавайте авторские песни и клипы с помощью искусственного интеллекта AVRORA 🌟\n\n"
-                    "По правилам телеграм для активации нейросети подпишитесь на сообщество автора и получите бесплатные токены."
+                    "По правилам телеграм для активации нейросети подпишитесь на сообщество автора и получите бесплатные генерации."
                 )
                 
                 # Отправляем сообщение с изображением и клавиатурой
@@ -1288,9 +1298,9 @@ async def startup():
     logging.info("Команды бота установлены.")
 
     # Запускаем фоновые задачи
-    asyncio.create_task(daily_check())
-    asyncio.create_task(renw_check())
-    asyncio.create_task(bot_monitoring())
+    # asyncio.create_task(daily_check())
+    # asyncio.create_task(renw_check())
+    # asyncio.create_task(bot_monitoring())
     logging.info("Фоновые задачи запущены.")
 
     # Запускаем бота

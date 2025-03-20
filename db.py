@@ -165,7 +165,7 @@ async def add_referal(referrer_code, user_id):
             await db.execute('UPDATE users SET referred_by = ? WHERE user_id = ?', (referrer_username, user_id))
             
             # Начисляем бонус пригласившему пользователю
-            await db.execute('UPDATE users SET balance = balance + ? WHERE username = ?', (1, referrer_username))
+            await db.execute('UPDATE users SET balance = balance + ? WHERE username = ?', (0.5, referrer_username))
             
             # Сохраняем изменения
             await db.commit()

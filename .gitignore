@@ -19,3 +19,5 @@ logs
 1.py 
 1.json
 webhook.py
+*.webp
+*.mp4
