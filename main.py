@@ -1298,9 +1298,9 @@ async def startup():
     logging.info("Команды бота установлены.")
 
     # Запускаем фоновые задачи
-    # asyncio.create_task(daily_check())
-    # asyncio.create_task(renw_check())
-    # asyncio.create_task(bot_monitoring())
+    asyncio.create_task(daily_check())
+    asyncio.create_task(renw_check())
+    asyncio.create_task(bot_monitoring())
     logging.info("Фоновые задачи запущены.")
 
     # Запускаем бота
