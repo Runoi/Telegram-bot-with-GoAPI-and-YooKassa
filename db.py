@@ -58,6 +58,13 @@ async def create_table():
                 );
             ''')
             logger.info("Таблица payments создана или уже существует.")
+            await db.execute('''
+                CREATE TABLE IF NOT EXISTS queue (  
+                    user_id INTEGER PRIMARY KEY,
+                    queue TIMESTAMP              
+                            
+                );
+            ''')
 
             # Сохраняем изменения
             await db.commit()
@@ -339,7 +346,7 @@ async def check_plan(id):
         
         if user_data and user_data[0]:  # Проверка на None
             try:
-               
+                print(f'DB{user_data}')
                 return user_data
             except ValueError:
                 return False  # Если дата в БД повреждена, вернуть False
@@ -618,3 +625,46 @@ async def revoke_subscription(user_id: int):
     except Exception as e:
         logger.error(f"Ошибка при отзыве подписки у пользователя {user_id}: {e}")
         raise
+
+async def get_last_request_time(user_id: int) -> datetime | None:
+    """
+    Получает время последнего запроса пользователя из базы данных.
+    Если запись отсутствует, возвращает None.
+    """
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute('SELECT queue FROM queue WHERE user_id = ?', (user_id,)) as cursor:
+            result = await cursor.fetchone()
+            await db.commit()
+            return datetime.fromisoformat(result[0]) if result else None
+        
+
+async def update_last_request_time(user_id: int):
+    """
+    Обновляет время последнего запроса пользователя в базе данных.
+    """
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute('''
+            INSERT OR REPLACE INTO queue (user_id, queue)
+            VALUES (?, ?)
+        ''', (user_id, datetime.now().isoformat()))
+        await db.commit()
+
+async def clear_old_requests():
+    """
+    Удаляет записи о запросах, которые старше 10 минут.
+    """
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute('''
+            DELETE FROM queue WHERE queue < ?
+        ''', ((datetime.now() - timedelta(minutes=10)).isoformat(),))  # <- Запятая в конце
+        await db.commit()
+
+async def clear_queue_for_user(user_id: int):
+    """
+    Обнуляет время ожидания в очереди для указанного пользователя.
+    """
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute('''
+            DELETE FROM queue WHERE user_id = ?
+        ''', (user_id,))
+        await db.commit()
