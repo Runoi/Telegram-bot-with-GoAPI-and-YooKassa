@@ -48,6 +48,7 @@ ADMIN_CHANNEL_ID = -1002337007587
 img_face = FSInputFile('face_image.jpg')
 img_gen = FSInputFile('gen_mus.webp')
 img_promo = FSInputFile('img_promo.webp')
+img_startgen = FSInputFile('img_startgen.webp')
 exemple_music = FSInputFile('exemple.mp4',filename='Пример песни')
 
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
@@ -408,6 +409,9 @@ async def activate(callback_query: types.CallbackQuery, state: FSMContext):
     keyboard1 = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎵Аврора нейросеть", callback_data="generate_music")],
     ])
+    keyboard2 = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Посмотреть пример", callback_data="sample")],
+    ])
     current_state = await state.get_state()
     if current_state is not None:
             await state.clear()  # чтобы свободно перейти сюда из любого другого состояния
@@ -466,7 +470,7 @@ async def activate(callback_query: types.CallbackQuery, state: FSMContext):
                             )
                         except Exception as e:
                             print(f"Ошибка при удалении сообщения: {e}")
-
+                        
                         # Отправляем первое сообщение с описанием и балансом
                         await callback_query.message.answer(
                             f'✅ Доступ открыт. Добро пожаловать!\n'
@@ -479,11 +483,9 @@ async def activate(callback_query: types.CallbackQuery, state: FSMContext):
 
 Посмотри пример и создай свой шедевр 👇''',
                             
-                            parse_mode=ParseMode.HTML
+                            parse_mode=ParseMode.HTML, reply_markup= keyboard2
                         )
 
-                        # Отправляем аудио с примером песни
-                        await callback_query.message.answer_video(exemple_music,reply_markup=keyboard1,)
                     else:
                         try:
                             # Удаляем предыдущее сообщение
@@ -550,6 +552,15 @@ async def activate(callback_query: types.CallbackQuery, state: FSMContext):
 
     # Убираем "часики" на кнопке
     await callback_query.answer()
+
+@dp.callback_query(lambda query: query.data == "sample")
+async def sample(callback_query: types.CallbackQuery, state: FSMContext):
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Создать песню", callback_data="generate_music")],
+    ])
+
+    # Отправляем аудио с примером песни
+    await callback_query.message.answer_video(exemple_music,reply_markup=keyboard,)
 
 # Список всех музыкальных жанров
 genres = [
@@ -639,9 +650,50 @@ async def handle_pagination(callback_query: types.CallbackQuery):
 
     await callback_query.answer()
 
-
-
 @dp.callback_query(lambda query: query.data == "generate_music")
+async def generate_music_start(callback_query: types.CallbackQuery, state: FSMContext):
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎸СОЗДАТЬ ПЕСНЮ", callback_data="gen_music")],
+        [InlineKeyboardButton(text="Главное меню", callback_data='activate')],
+       
+    ])
+    keyboard1 = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Получить генерации", callback_data="my_refs")],
+        [InlineKeyboardButton(text="Бесплатные генерации", callback_data='free')],
+        [InlineKeyboardButton(text="Главное меню", callback_data='activate')],
+       
+    ])
+    balance = await get_balance(callback_query.from_user.id)
+    if balance < 1:
+            await callback_query.message.answer(
+                f'У вас закончились генерации. Пожалуйста пополните подписку, либо используйте бесплатные генерации что мы даем всем хорошим людям.',
+            reply_markup=keyboard1)
+    else:
+
+            await bot.delete_message(
+                chat_id=callback_query.message.chat.id,
+                message_id=callback_query.message.message_id
+            )
+
+            await callback_query.message.answer_photo(
+                img_startgen,
+                caption=''' ✅Активировано нейросеть AVRORA – всего в 2 клика: музыка, ритм, голос, исполнение, публикация, продвижение.\n\n
+
+        Можешь представить свою песню? Значит теперь можешь ее создать легко!\n
+        01/ Выбери жанр.\n
+        02/ Выбери режим.\n
+        03/ Выбери текст, голос, уникализируй\n
+        04/ УРА! ТВОЙ ШЕДЕВР ГОТОВ!\n
+        05/ Публикуй и зарабатывай на своем творчестве.\n\n
+
+        Ознакомьтесь с инструкцией. Результат зависит от качества ваших запросов и подписки.️\n
+        https://teletype.in/@infopovod/avrora''',
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=True
+            )
+
+@dp.callback_query(lambda query: query.data == "gen_music")
 async def generate_music(callback_query: types.CallbackQuery, state: FSMContext):
     user_id = callback_query.from_user.id
     await callback_query.answer('')
@@ -937,7 +989,9 @@ async def handle_completed_music_task(output: dict, user_id: int, lyrics: str):
 
             await bot.send_photo(user_id, out_img)
             await bot.send_audio(user_id, out_music, title=title)
-            await bot.send_message(user_id,'Если результат не точный - обязательно посмотри инструкции, 99% это решит запрос, я умею всё, просто правильно используй!')
+            await bot.send_message(user_id,'''ВАШ ШЕДЕВР ГОТОВ!🌟
+Публикуйте на всех площадках и зарабатывайте.\n
+АВРОРА ИИ - является партнёром крупнейших муз.площадок.Мы способны оказать всестороннюю поддержку в размещении вашего творчества в редакторских плейлистах, баннерах и витринах Яндекс. Музыки, VK Музыки, Apple Music, Звук, МТС Музыки, Spotify и других сервисах.\n\nЕсли результат не точный - обязательно посмотри инструкции, 99% это решит запрос, я умею всё, просто правильно используй!''')
 
         # Логируем успешное завершение
         logger.info(f"Результат задачи отправлен пользователю {user_id}.")
@@ -979,19 +1033,20 @@ async def pay(message:types.Message,state: FSMContext):
         [InlineKeyboardButton(text="🌘Старт", callback_data="sub_start"),
          InlineKeyboardButton(text="🌗Творец", callback_data="sub_master"),
         ],
-        [InlineKeyboardButton(text="🌕Звезда", callback_data="sub_year"),
+        [InlineKeyboardButton(text="⭐Звезда", callback_data="sub_year"),
          InlineKeyboardButton(text="❤️Бесплатные генерации", callback_data="free")],
         [InlineKeyboardButton(text="Отменить продление", url="https://t.me/dropsupport")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="activate")]
     ])
     mess = (
-            f'''Создавайте легко свои песни и публикуйте их на всех площадках, зарабатывая за прослушивания!\n
+            f'''Выберите тариф ниже👇🏽\n
+<b>Пойте как ваш любимый исполнитель за считанные минуты, публикуйте на всех площадках и зарабатывайте.</b>\n
 <b>ТАРИФЫ:</b>\n
 🌘 Старт - 10 генераций (2 жанра) - 350₽/мес \n
 
 🌗 Творец- 30 генераций (35 жанров) - 990₽/мес \n
 
-🌕 Звезда - 30 генераций (250 жанров) - 5900₽/мес \n
+⭐ Звезда - 30 генераций (250 жанров) - 5900₽/мес \n
 
 ✅Оплачивайте через официальные платежные с-мы безопасно. Нам доверяю: Paypal, Sber, Yandex money, СБП, Vk pay и другие.\n
 
@@ -1011,19 +1066,20 @@ async def get_sub(callback_query: types.CallbackQuery,state: FSMContext):
         [InlineKeyboardButton(text="🌘Старт", callback_data="sub_start"),
          InlineKeyboardButton(text="🌗Творец", callback_data="sub_master"),
         ],
-        [InlineKeyboardButton(text="🌕Звезда", callback_data="sub_year"),
+        [InlineKeyboardButton(text="⭐Звезда", callback_data="sub_year"),
          InlineKeyboardButton(text="❤️Бесплатные генерации", callback_data="free")],
         [InlineKeyboardButton(text="Отменить продление", url="https://t.me/dropsupport")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="activate")]
     ])
     mess = (
-            f'''Создавайте легко свои песни и публикуйте их на всех площадках, зарабатывая за прослушивания!\n
+            f'''Выберите тариф ниже👇🏽\n
+<b>Пойте как ваш любимый исполнитель за считанные минуты, публикуйте на всех площадках и зарабатывайте.</b>\n
 <b>ТАРИФЫ:</b>\n
 🌘 Старт - 10 генераций (2 жанра) - 350₽/мес \n
 
 🌗 Творец- 30 генераций (35 жанров) - 990₽/мес \n
 
-🌕 Звезда - 30 генераций (250 жанров) - 5900₽/мес \n
+⭐ Звезда - 30 генераций (250 жанров) - 5900₽/мес \n
 
 ✅Оплачивайте через официальные платежные с-мы безопасно. Нам доверяю: Paypal, Sber, Yandex money, СБП, Vk pay и другие.\n
 
@@ -1192,7 +1248,7 @@ async def get_free(callback_query: types.CallbackQuery):
 
     ref_url = await generate_referral_link(username, ref)
     mess = f'''{callback_query.from_user.first_name}, расскажите о нас своим коллегам.\n
-📍За каждого приглашенного - 1 генерацию (2 песни).\n
+📍За каждого приглашенного - 0.5 генераций (2 песни).\n
 
 Ваша ссылка для приглашения (скопируйте и отправьте её коллегам или в чаты):\n
 {ref_url}
