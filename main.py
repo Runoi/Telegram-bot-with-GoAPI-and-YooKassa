@@ -1361,36 +1361,55 @@ async def any_message_handler(message: types.Message, state: FSMContext):
                 
                 # Отправляем сообщение с изображением и клавиатурой
                 await message.answer_photo(img_face, caption=face_message, reply_markup=sub_keyboard)   
-async def bot_monitoring(bot = bot, admin_channel_id = ADMIN_CHANNEL_ID, interval: int = 7200):
+async def bot_monitoring(bot=bot, admin_channel_id=ADMIN_CHANNEL_ID, interval: int = 7200):
     """
-    Функция для мониторинга бота. Каждый час отправляет сообщение в админ-канал.
+    Функция для мониторинга бота и системы. Отправляет статистику в админ-канал.
     
     :param bot: Экземпляр бота.
     :param admin_channel_id: ID админ-канала.
-    :param interval: Интервал отправки сообщений в секундах (по умолчанию 3600 секунд = 1 час).
+    :param interval: Интервал отправки сообщений в секундах (по умолчанию 7200 секунд = 2 часа).
     """
+    import psutil
+    from datetime import datetime, timedelta
+    
     while True:
         try:
-            from datetime import datetime
             # Получаем текущее время
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            # Формируем сообщение для админ-канала
-            message = f"🔄 Бот работает исправно. Время: {current_time}"
+            # Получаем статистику системы
+            cpu_percent = psutil.cpu_percent(interval=1)
+            ram = psutil.virtual_memory()
+            ram_percent = ram.percent
+            ram_used = ram.used / (1024 ** 3)  # в ГБ
+            ram_total = ram.total / (1024 ** 3)  # в ГБ
             
-            # Отправляем сообщение в админ-канал
+            # Получаем uptime системы
+            with open('/proc/uptime', 'r') as f:
+                uptime_seconds = float(f.readline().split()[0])
+                uptime = str(timedelta(seconds=uptime_seconds)).split('.')[0]
+            
+            # Формируем сообщение
+            message = (
+                f"📊 **Мониторинг системы**\n"
+                f"⏰ Время: `{current_time}`\n"
+                f"🖥 CPU: `{cpu_percent}%`\n"
+                f"🧠 RAM: `{ram_percent}%` (`{ram_used:.1f} GB` из `{ram_total:.1f} GB`)\n"
+                f"🤖 Бот работает исправно"
+            )
+            
+            # Отправляем сообщение
             await bot.send_message(admin_channel_id, message)
             
-            # Логируем отправку сообщения
-            logging.info(f"Сообщение мониторинга отправлено в админ-канал: {message}")
+            # Логируем
+            logging.info(f"Отправлен отчет мониторинга: CPU {cpu_percent}%, RAM {ram_percent}%")
             
-            # Ждем указанный интервал перед следующей отправкой
+            # Ждем указанный интервал
             await asyncio.sleep(interval)
-        
+            
         except Exception as e:
-            # Логируем ошибку, если что-то пошло не так
-            logging.error(f"Ошибка в функции мониторинга: {e}")
-            await asyncio.sleep(60)  # Ждем 1 минуту перед повторной попыткой
+            logging.error(f"Ошибка мониторинга: {str(e)}")
+            await asyncio.sleep(60)  # Пауза перед повторной попыткой
 
 async def daily_check():
     """Фоновая задача для ежедневной проверки."""
