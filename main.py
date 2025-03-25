@@ -556,11 +556,15 @@ async def activate(callback_query: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(lambda query: query.data == "sample")
 async def sample(callback_query: types.CallbackQuery, state: FSMContext):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Создать песню", callback_data="activate")],
+        [InlineKeyboardButton(text="Создать песню", callback_data="sample_start")],
     ])
 
     # Отправляем аудио с примером песни
     await callback_query.message.answer_video(exemple_music,reply_markup=keyboard,)
+
+@dp.callback_query(lambda query: query.data == "sample_start")
+async def sample(callback_query: types.CallbackQuery, state: FSMContext):
+    await return_to_start(callback_query.from_user.id)
 
 # Список всех музыкальных жанров
 genres = [
