@@ -561,7 +561,7 @@ async def activate(callback_query: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(lambda query: query.data == "sample")
 async def sample(callback_query: types.CallbackQuery, state: FSMContext):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Создать песню", callback_data="sample_start")],
+        [InlineKeyboardButton(text="🎸Создать песню", callback_data="sample_start")],
     ])
 
     # Отправляем аудио с примером песни
