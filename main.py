@@ -1276,7 +1276,7 @@ async def get_free(callback_query: types.CallbackQuery):
 
     if not ref:
         await callback_query.message.edit_text("У вас пока нет реферального кода.")
-        return
+        
 
     ref_url = await generate_referral_link(username, ref)
     mess = f'''{callback_query.from_user.first_name}, расскажите о нас своим коллегам.\n
