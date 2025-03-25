@@ -442,7 +442,12 @@ async def activate(callback_query: types.CallbackQuery, state: FSMContext):
                 referrer_id = None  # В callback нет реферальных данных, убираем
 
                 if referrer_id:
-                    await add_referal(referrer_id, user.id)  
+                    await add_referal(referrer_id, user.id)  # Добавляем реферала
+                    import re
+                    # Разделяем на группы букв и цифр
+                    groups = re.findall(r'[a-zA-Z]+|\d+', referrer_id)
+                    await bot.send_message(chat_id=groups[1], text= f'Вам начислено 0,5 генераций. Спасибо что рекомендуете нас друзьям!') 
+                      
 
                 await db.insert_table(user, referral_code, referrer_id, 1,1)
 
