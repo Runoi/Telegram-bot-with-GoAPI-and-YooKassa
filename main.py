@@ -735,7 +735,14 @@ async def generate_music(callback_query: types.CallbackQuery, state: FSMContext)
     await state.set_state(MusicGeneration.waiting_for_genre)
     await callback_query.message.answer_photo(
         img_gen,
-        caption='Выберите один из доступных жанров',
+        caption=(
+        "🌘 Старт – 2 жанра\n"
+        "🌗 Творец – 20 жанров\n"
+        "⭐ Звезда – 250 жанров\n\n"
+        "Обязательно ознакомься с инструкцией – 99% вопросов решаются там. "
+        "Я умею многое, главное – правильно меня использовать!\n"
+        "👉 <a href='https://teletype.in/@infopovod/avrora'>Инструкция</a>"
+    ),
         reply_markup=await create_keyboard(user_id),
         parse_mode=ParseMode.HTML,
         disable_web_page_preview=True
