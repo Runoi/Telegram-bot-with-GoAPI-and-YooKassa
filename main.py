@@ -657,25 +657,14 @@ async def generate_music_start(callback_query: types.CallbackQuery, state: FSMCo
         [InlineKeyboardButton(text="Главное меню", callback_data='activate')],
        
     ])
-    keyboard1 = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Получить генерации", callback_data="my_refs")],
-        [InlineKeyboardButton(text="Бесплатные генерации", callback_data='free')],
-        [InlineKeyboardButton(text="Главное меню", callback_data='activate')],
-       
-    ])
-    balance = await get_balance(callback_query.from_user.id)
-    if balance < 1:
-            await callback_query.message.answer(
-                f'У вас закончились генерации. Пожалуйста пополните подписку, либо используйте бесплатные генерации что мы даем всем хорошим людям.',
-            reply_markup=keyboard1)
-    else:
+    
 
-            await bot.delete_message(
+    await bot.delete_message(
                 chat_id=callback_query.message.chat.id,
                 message_id=callback_query.message.message_id
             )
 
-            await callback_query.message.answer_photo(
+    await callback_query.message.answer_photo(
                 img_startgen,
                 caption=''' ✅Активировано нейросеть AVRORA – всего в 2 клика: музыка, ритм, голос, исполнение, публикация, продвижение.\n\n
 
@@ -695,6 +684,12 @@ async def generate_music_start(callback_query: types.CallbackQuery, state: FSMCo
 
 @dp.callback_query(lambda query: query.data == "gen_music")
 async def generate_music(callback_query: types.CallbackQuery, state: FSMContext):
+    keyboard1 = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💳Получить генерации", callback_data="my_refs")],
+        [InlineKeyboardButton(text="❤️Бесплатные генерации", callback_data='free')],
+        [InlineKeyboardButton(text="🔙Главное меню", callback_data='activate')],
+       
+    ])
     user_id = callback_query.from_user.id
     await callback_query.answer('')
 
@@ -703,56 +698,61 @@ async def generate_music(callback_query: types.CallbackQuery, state: FSMContext)
     if not status:
         await callback_query.message.edit_text('Вы забанены!')
         return
+    balance = await get_balance(callback_query.from_user.id)
+    if balance < 1:
+            await callback_query.message.answer(
+                f'У вас закончились генерации. Пожалуйста пополните подписку, либо используйте бесплатные генерации что мы даем всем хорошим людям.',
+            reply_markup=keyboard1)
+    else:
+        # Проверяем, когда пользователь последний раз отправлял запрос
+        last_request_time = await db.get_last_request_time(user_id)
+        if last_request_time:
+            from datetime import datetime, timedelta
+            current_time = datetime.now()
+            time_difference = current_time - last_request_time
 
-    # Проверяем, когда пользователь последний раз отправлял запрос
-    last_request_time = await db.get_last_request_time(user_id)
-    if last_request_time:
-        from datetime import datetime, timedelta
-        current_time = datetime.now()
-        time_difference = current_time - last_request_time
+            # Если с последнего запроса прошло менее 10 минут
+            if time_difference < timedelta(minutes=10):
+                # Вычисляем оставшееся время
+                remaining_time = timedelta(minutes=10) - time_difference
+                minutes, seconds = divmod(remaining_time.seconds, 60)
 
-        # Если с последнего запроса прошло менее 10 минут
-        if time_difference < timedelta(minutes=10):
-            # Вычисляем оставшееся время
-            remaining_time = timedelta(minutes=10) - time_difference
-            minutes, seconds = divmod(remaining_time.seconds, 60)
+                # Формируем сообщение
+                message = (
+                    f"⏳ Вы можете отправлять новый запрос только раз в 10 минут.\n"
+                    f"Попробуйте через {minutes} минут {seconds} секунд."
+                )
+                await callback_query.message.answer(message)
+                return
 
-            # Формируем сообщение
-            message = (
-                f"⏳ Вы можете отправлять новый запрос только раз в 10 минут.\n"
-                f"Попробуйте через {minutes} минут {seconds} секунд."
-            )
-            await callback_query.message.answer(message)
-            return
+        # Удаляем предыдущее сообщение
+        await bot.delete_message(
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id
+        )
 
-    # Удаляем предыдущее сообщение
-    await bot.delete_message(
-        chat_id=callback_query.message.chat.id,
-        message_id=callback_query.message.message_id
-    )
+        # Устанавливаем состояние "waiting_for_genre"
+        await state.set_state(MusicGeneration.waiting_for_genre)
+        await callback_query.message.answer_photo(
+            img_gen,
+            caption=(
+            "🌘 Старт – 2 жанра\n"
+            "🌗 Творец – 20 жанров\n"
+            "⭐ Звезда – 250 жанров\n\n"
+            "Обязательно ознакомься с инструкцией – 99% вопросов решаются там. "
+            "Я умею многое, главное – правильно меня использовать!\n"
+            "👉 <a href='https://teletype.in/@infopovod/avrora'>Инструкция</a>"
+        ),
+            reply_markup=await create_keyboard(user_id),
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True
+        )
 
-    # Устанавливаем состояние "waiting_for_genre"
-    await state.set_state(MusicGeneration.waiting_for_genre)
-    await callback_query.message.answer_photo(
-        img_gen,
-        caption=(
-        "🌘 Старт – 2 жанра\n"
-        "🌗 Творец – 20 жанров\n"
-        "⭐ Звезда – 250 жанров\n\n"
-        "Обязательно ознакомься с инструкцией – 99% вопросов решаются там. "
-        "Я умею многое, главное – правильно меня использовать!\n"
-        "👉 <a href='https://teletype.in/@infopovod/avrora'>Инструкция</a>"
-    ),
-        reply_markup=await create_keyboard(user_id),
-        parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True
-    )
+        # Обновляем время последнего запроса пользователя
+        await db.update_last_request_time(user_id)
 
-    # Обновляем время последнего запроса пользователя
-    await db.update_last_request_time(user_id)
-
-    # Очищаем старые записи (опционально)
-    await db.clear_old_requests()
+        # Очищаем старые записи (опционально)
+        await db.clear_old_requests()
 
 # Обработчик callback-запроса для выбора жанра
 @dp.callback_query(lambda query: query.data.startswith('genre_'))
