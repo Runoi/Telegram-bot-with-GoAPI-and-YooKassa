@@ -757,7 +757,10 @@ async def choice_genre(callback_query: types.CallbackQuery, state: FSMContext):
     selected_genre = callback_query.data.split('_', 1)[1]
 
     # Проверяем, доступен ли жанр для текущей подписки
-    available_genres = SUBSCRIPTION_LEVELS.get(user_subscription[0], [])
+    if user_subscription != False:
+        available_genres = SUBSCRIPTION_LEVELS.get(user_subscription[0], [])
+    else:
+        available_genres = SUBSCRIPTION_LEVELS.get(user_subscription, [])
     if selected_genre not in available_genres:
         await callback_query.answer("❌ Этот жанр недоступен для вашей подписки.", show_alert=True)
         return
@@ -783,10 +786,11 @@ async def choice_genre(callback_query: types.CallbackQuery, state: FSMContext):
     # Устанавливаем следующее состояние
     await state.set_state(MusicGeneration.waiting_for_lyrics_full)
     print(f"Установлено состояние: {await state.get_state()}")
-
+    # Очищаем старые записи (опционально)
+    await db.clear_queue_for_user(user_id=callback_query.from_user.id)
     # Отправляем сообщение с инструкцией
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙Назад", callback_data="generate_music")]
+        [InlineKeyboardButton(text="🔙Назад", callback_data="gen_music")]
     ])
     await callback_query.message.answer(
         '''Песня почти готова, теперь просто отправьте текст (не более 3000 символов).
@@ -828,7 +832,7 @@ async def full_lyric(message: types.Message, state: FSMContext):
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Начать генерацию", callback_data="confirm")],
             #[InlineKeyboardButton(text="✏️ Изменить текст", callback_data="change_text")],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="generate_music")]
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="gen_music")]
         ])
 
         # Отправляем сообщение с подтверждением
@@ -848,7 +852,7 @@ async def full_lyric(message: types.Message, state: FSMContext):
         await message.answer("Произошла ошибка. Пожалуйста, попробуйте позже.")
 
 # Обработчик callback-запросов (подтверждение или изменение текста)
-@dp.callback_query(lambda query: query.data in ["confirm", "change_text", "generate_music"])
+@dp.callback_query(lambda query: query.data in ["confirm", "change_text", "gen_music"])
 async def handle_confirmation(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.answer()  # Подтверждаем получение callback
 
@@ -867,8 +871,10 @@ async def handle_confirmation(callback_query: types.CallbackQuery, state: FSMCon
         await callback_query.message.answer("Введите новый текст:")
         await state.set_state(MusicGeneration.waiting_for_lyrics_full)
 
-    elif callback_query.data == "generate_music":
+    elif callback_query.data == "gen_music":
         # Логика возврата к генерации музыки
+        # Очищаем старые записи (опционально)
+        await db.clear_queue_for_user(user_id=callback_query.from_user.id)
         await callback_query.message.answer("Возвращаемся к выбору жанра...")
         await state.set_state(MusicGeneration.waiting_for_genre)
 
