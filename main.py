@@ -1282,6 +1282,7 @@ async def support(callback_query: types.CallbackQuery):
 @dp.callback_query(lambda query: query.data == "promo")
 async def promo(callback_query: types.CallbackQuery):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Опубликовать песню", url="https://t.me/dropsupport")]
         [InlineKeyboardButton(text="🔙 Назад", callback_data="activate")]
     ])
     # Удаляем предыдущее сообщение
